@@ -33,6 +33,9 @@ class AgentReviewConfigurable : BoundConfigurable("Agent Review") {
             }
             group("Review Flow") {
                 row {
+                    checkBox("Open diff on single click in the Agent Review tree").bindSelected(s::openDiffOnSingleClick)
+                }
+                row {
                     checkBox("Mark file reviewed when its diff is opened").bindSelected(s::autoMarkReviewedOnOpen)
                 }
                 row {

@@ -50,6 +50,7 @@ import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ReviewedChange
 import dev.gipo.agentreview.store.ReviewListener
+import dev.gipo.agentreview.settings.AgentReviewSettings
 import dev.gipo.agentreview.store.ReviewStore
 import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
@@ -83,6 +84,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
         Disposer.register(this, preview)
         browser.setShowDiffActionPreview(preview)
+        browser.viewer.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount != 1 || !AgentReviewSettings.getInstance().state.openDiffOnSingleClick) return
+                if (browser.viewer.getPathForLocation(e.x, e.y) == null || browser.selectedChanges.isEmpty()) return
+                ApplicationManager.getApplication().invokeLater({ preview.openPreview(false) }, project.disposed)
+            }
+        })
         model.diffOpener = { rc ->
             browser.viewer.setSelectedChanges(listOf(rc.change))
             preview.performDiffAction()
