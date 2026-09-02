@@ -1,9 +1,9 @@
 # Agent Review — IntelliJ plugin
 
-Review agent-authored changes in IntelliJ's diff viewer. Leave inline comments,
-mark files reviewed, then hand the review to any coding agent: Claude Code,
-Codex, OpenCode, Pi, GitHub Copilot Chat, JetBrains AI Assistant, or anything
-that speaks MCP.
+Review changes written by AI agents inside IntelliJ's diff viewer. Leave inline
+comments, mark files reviewed, then hand the review to any coding agent:
+Claude Code, Codex, OpenCode, Pi, GitHub Copilot Chat, JetBrains AI Assistant,
+or anything that speaks MCP.
 
 Inspired by [tuicr](https://tuicr.dev), [hunk](https://github.com/modem-dev/hunk)
 and Bitbucket Integration Pro, but built on IntelliJ's own diff engine.
@@ -22,50 +22,91 @@ From source:
 Settings | Plugins | ⚙ | Install Plugin from Disk… → the zip, restart.
 Requires IntelliJ 2026.2+ (build 262).
 
-## Workflow
+## The loop
 
-1. Open the **Agent Review** tool window (right side).
-2. Pick a scope from the toolbar combo:
-   - uncommitted (default), staged, unstaged;
-   - *Compare with Branch…* picks a branch and reviews everything on HEAD since
-     the merge-base, like a pull request;
-   - *Commit Range…* takes `base..head` (or `base...head` for merge-base);
-   - *Single Commit…*.
+1. The agent edits your working tree or lands commits.
+2. Open the **Agent Review** tool window (right sidebar), pick a scope.
+3. Walk the files. Comment, mark reviewed, move on.
+4. Send the review, or let the agent pull it over MCP.
+5. The agent fixes things and resolves comments. Reviewed files it touched
+   again show as *changed*, so you re-check only those.
 
-   Or from Git Log: right-click one commit → *Review Commit with Agent Review*.
-   Ctrl+click several commits → *Review Range of N Commits* (oldest vs newest,
-   same as the log's *Compare Versions*).
-3. Double-click a file to open its diff. In the diff:
+## Scopes
 
-   | Shortcut | Action |
-   |---|---|
-   | `Alt+Shift+C` | Add comment on caret line or selection |
-   | `Alt+Shift+F` | Add file-level comment |
-   | `Alt+Shift+R` | Toggle file reviewed |
-   | `Alt+Shift+N` / `Alt+Shift+P` | Next / previous unreviewed file |
-   | `Alt+Shift+Y` | Copy review Markdown to clipboard |
+The toolbar combo picks what you review. Each scope keeps its own session of
+comments and reviewed marks, so switching back and forth loses nothing.
 
-   Hover a line and click the **+** in the gutter to comment it. The diff header
-   toolbar also has Mark Reviewed, Add Comment, Next Unreviewed and Send.
-   Comments render inline under the line with Edit / Resolve / Delete. Comment
-   types: note, issue, question, nit, praise.
-4. In the tool window, `Space` toggles reviewed on the selected file. The
-   Commit tool window also gets a ✓ hover icon per file.
-5. Send the review (toolbar or the *Send Review To* group in the diff popup).
+| Scope | What it compares |
+|---|---|
+| Uncommitted | working tree vs HEAD, plus untracked files |
+| Staged | index vs HEAD |
+| Unstaged | working tree vs index |
+| Compare with Branch… | HEAD vs the merge-base with a branch you pick from a searchable list. This is what a pull request shows. |
+| Commit Range… | `base..head`, or `base...head` for merge-base |
+| Single Commit… | one commit vs its parent |
 
-Reviewed marks are keyed by content hash. If the agent edits a reviewed file
-again it shows as *⟳ changed* and *Next Unreviewed* picks it up.
+From Git Log: right-click a commit → *Review Commit with Agent Review*.
+Ctrl+click several commits → *Review Range of N Commits*, oldest vs newest,
+same semantics as the log's own *Compare Versions*.
+
+## Reviewing
+
+Double-click a file (or Enter) to open it in the **Agent Review** diff tab. One
+tab is reused for the whole review.
+
+In the diff:
+
+| Action | Where |
+|---|---|
+| Comment a line or selection | hover the line and click **+** in the gutter, `Alt+Shift+C`, or the toolbar |
+| Comment the whole file | `Alt+Shift+F` |
+| Toggle file reviewed | `Alt+Shift+R` or the ✓ toolbar button |
+| Next / previous unreviewed file | `Alt+Shift+N` / `Alt+Shift+P` or the arrows |
+| Copy review Markdown | `Alt+Shift+Y` |
+| Send review | the upload button opens the *Send Review To* menu |
+
+The comment editor has a type picker (note, issue, question, nit, praise),
+Ctrl+Enter saves, Esc cancels. Comments render as cards under the line with a
+colored bar per type, and Edit / Resolve / Delete links. Resolved comments turn
+green and show the agent's reply when it resolved them.
+
+In the tool window:
+
+- **Tree**: ✓ reviewed, *⟳ changed* when the file changed since you marked it,
+  `N ✎` open comments. `Space` toggles reviewed. The Commit tool window also
+  gets a ✓ hover icon on every file row, and *Review Uncommitted Changes* in
+  its context menu.
+- **Comments list**: Enter or double-click opens the diff at the line, or the
+  file itself when it is outside the current scope. `R` resolves, `Delete`
+  removes. Right-click for Open in Diff, Edit, Resolve, Copy Location, Delete.
+- **Notes**: free text for the whole review, exported at the end.
+- **Status line**: files, reviewed, stale, open comments, scope, other saved
+  sessions.
+
+Toolbar cleanup: *Reset Reviewed Marks* (keeps comments), *Clear Resolved
+Comments*, *Clear Session* (this scope), *Clear All Sessions* (every scope of
+the project), *Forget Other Sessions*.
+
+Header quick toggles (also in the ⋮ menu):
+
+- **Open Diff on Single Click**: the diff tab follows the tree selection. Off
+  means only double-click, Enter and the unreviewed arrows change it.
+- **Mark Reviewed When Diff Opens** / **Closes**: hands-free marking as you walk
+  the files. In continuous mode a file counts as opened when you click into its
+  block.
+- **Continuous Diff**: all files in one scrollable view instead of one file per
+  tab. IDE-wide setting, shared with the Commit tool window.
 
 ## Getting the review to the agent
 
-| Channel | How |
-|---|---|
-| Clipboard | Markdown, tuicr-compatible. Paste anywhere. |
-| Terminal | Pastes into an IDE terminal tab (bracketed paste, so newlines don't submit). Tab chosen by regex in settings, running-command tabs preferred. Works with `claude`, `codex`, `opencode`, `pi`. |
-| File | Writes `.agent-review/REVIEW.md` and `REVIEW.json`. Tell the agent to read it. |
-| GitHub Copilot Chat | Opens a new chat with the review as the prompt. |
-| JetBrains AI Assistant | Opens a new chat with the input pre-filled (internal API, clipboard fallback). ACP agents hosted in AI Assistant get it the same way. |
-| MCP | Tools on IntelliJ's built-in MCP server (Settings \| Tools \| MCP Server). |
+| Channel | How | When |
+|---|---|---|
+| Clipboard | Markdown, tuicr-compatible. Paste anywhere. | always works |
+| Terminal | pastes into an IDE terminal tab with bracketed paste; prefers a tab running claude, codex, opencode, pi | agent runs inside the IDE terminal |
+| File | writes `.agent-review/REVIEW.md` and `REVIEW.json` | tell the agent to read it |
+| GitHub Copilot Chat | opens a new chat with the review as the prompt | Copilot plugin installed |
+| JetBrains AI Assistant | opens a new chat with the input pre-filled, clipboard fallback | AI Assistant installed |
+| MCP | tools on IntelliJ's built-in MCP server; the agent pulls comments, resolves them, asks back | agents in tmux or anywhere, best channel |
 
 ### Markdown format
 
@@ -85,12 +126,12 @@ Review notes:
 - overall fine, ship after fixes
 ```
 
-`~` marks a line on the old side of the diff.
+`~` marks a line on the old side of the diff. Snippets, intro sentence and
+resolved-comment inclusion are settings.
 
-### MCP tools
+### MCP
 
-Enable the IDE MCP server and connect your agent to it (the settings page has
-one-click config for Claude Code, Cursor, VS Code; others take the SSE URL).
+Enable Settings | Tools | MCP Server. The plugin adds five tools:
 
 - `agent_review_get_review(format)` — Markdown or JSON of the whole review.
 - `agent_review_list_comments(include_resolved)` — comments with ids.
@@ -106,8 +147,7 @@ an auth token if restricted mode is on.
 ```bash
 # Claude Code
 claude mcp add --transport sse jetbrains http://127.0.0.1:64342/sse
-# with a token: claude mcp add --transport sse jetbrains http://127.0.0.1:64342/sse \
-#   --header "Authorization: Bearer <token>"
+# with a token: add --header "Authorization: Bearer <token>"
 ```
 
 ```toml
@@ -134,22 +174,16 @@ Without MCP, the same instruction works with the file channel: "read
 
 Settings | Tools | Agent Review: intro sentence, snippets on/off and max lines,
 include resolved comments, review file path, terminal tab regex, auto-submit,
-auto-mark reviewed when a diff is opened or closed, open diff on single click.
+mark reviewed on open / close, open diff on single click. The header toggles
+write the same values.
 
 ## Persistence
 
-The session lives in `.idea/workspace.xml` (per user, not committed). *Clear
-Session* wipes it.
+Sessions live in `.idea/workspace.xml`, per user, never committed. One session
+per scope, the 30 most recent are kept. Nothing else touches disk unless you
+use *Write Review File*.
 
 ## Contributing
 
 See `CONTRIBUTING.md` for building, installing locally, and releasing.
-
-## Development
-
-```bash
-./gradlew test        # unit + platform tests
-./gradlew runIde
-```
-
 Design: `docs/superpowers/specs/2026-09-02-agent-review-design.md`.

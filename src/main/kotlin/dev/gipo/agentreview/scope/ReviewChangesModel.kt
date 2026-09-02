@@ -139,6 +139,7 @@ class ReviewChangesModel(private val project: Project) : Disposable {
             return
         }
         OpenFileDescriptor(project, vf, (line ?: 1) - 1, 0).navigate(true)
+        Notifications.info(project, "Not in the current scope", "$path is not part of ${ReviewStore.getInstance(project).session.scope.describe()}. Opened the file instead of a diff.")
     }
 
     override fun dispose() {}
