@@ -24,7 +24,7 @@ class TerminalChannelImpl(private val project: Project) : TerminalChannel {
             override fun send(text: String, submit: Boolean) {
                 val builder = view.createSendTextBuilder().useBracketedPasteMode()
                 if (submit) builder.shouldExecute()
-                builder.send(text.trimEnd('\n', '\r'))
+                if (!builder.trySend(text.trimEnd('\n', '\r'))) error("Terminal '$name' rejected the text (session not ready?)")
             }
         }
 
@@ -58,8 +58,10 @@ class TerminalChannelImpl(private val project: Project) : TerminalChannel {
 
     override fun send(text: String, tabPattern: Regex, submit: Boolean): TerminalChannel.Result {
         val matching = targets().filter { tabPattern.containsMatchIn(it.name) }
-        // A tab whose title changed from the shell default is most likely running the agent TUI.
-        val target = matching.firstOrNull { !it.name.startsWith("Local") } ?: matching.firstOrNull()
+        // Prefer a tab that looks like an agent, then any tab renamed away from the shell default.
+        val target = matching.firstOrNull { AGENT_TITLE.containsMatchIn(it.name) }
+            ?: matching.firstOrNull { !it.name.startsWith("Local") }
+            ?: matching.firstOrNull()
             ?: return TerminalChannel.Result.NoTerminal
         return try {
             target.send(text, submit)
@@ -72,5 +74,6 @@ class TerminalChannelImpl(private val project: Project) : TerminalChannel {
 
     companion object {
         private val LOG = logger<TerminalChannelImpl>()
+        private val AGENT_TITLE = Regex("claude|codex|opencode|\\bpi\\b|gemini|aider|copilot", RegexOption.IGNORE_CASE)
     }
 }
