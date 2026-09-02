@@ -85,18 +85,36 @@ class ReviewChangesModel(private val project: Project) : Disposable {
     fun state(rc: ReviewedChange): ReviewState = ReviewStore.getInstance(project).session.reviewState(rc.path, rc.hash)
 
     /** Next unreviewed change after [afterPath] (wrapping), or null when all are reviewed. */
-    fun nextUnreviewed(afterPath: String?): ReviewedChange? {
+    fun nextUnreviewed(afterPath: String?): ReviewedChange? = unreviewedFrom(afterPath, 1)
+
+    fun prevUnreviewed(beforePath: String?): ReviewedChange? = unreviewedFrom(beforePath, -1)
+
+    private fun unreviewedFrom(path: String?, step: Int): ReviewedChange? {
         val list = changes
         if (list.isEmpty()) return null
-        val start = list.indexOfFirst { it.path == afterPath }
+        val start = list.indexOfFirst { it.path == path }.let { if (it < 0 && step < 0) 0 else it }
         for (i in 1..list.size) {
-            val candidate = list[(start + i) % list.size]
+            val candidate = list[Math.floorMod(start + i * step, list.size)]
             if (state(candidate) != ReviewState.REVIEWED) return candidate
         }
         return null
     }
 
+    /** Installed by the tool window: opens the change in its single reusable preview tab. */
+    @Volatile
+    var diffOpener: ((ReviewedChange) -> Boolean)? = null
+
+    /** Consumed by the diff binding of [path] on its next render. */
+    @Volatile
+    var pendingScroll: PendingScroll? = null
+
+    data class PendingScroll(val path: String, val side: dev.gipo.agentreview.model.Side, val line: Int)
+
     fun openDiff(rc: ReviewedChange, line: Int? = null, side: Side = Side.RIGHT) {
+        if (line != null) {
+            pendingScroll = PendingScroll(rc.path, if (side == Side.LEFT) dev.gipo.agentreview.model.Side.OLD else dev.gipo.agentreview.model.Side.NEW, line)
+        }
+        if (diffOpener?.invoke(rc) == true) return
         val all = changes.map { it.change }
         val index = all.indexOf(rc.change).coerceAtLeast(0)
         val context = ShowDiffContext()

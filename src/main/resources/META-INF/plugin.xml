@@ -76,6 +76,10 @@
                     text="Toggle File Reviewed" description="Mark or unmark this file as reviewed" icon="AllIcons.Actions.Checked">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift R"/>
             </action>
+            <action id="AgentReview.PrevUnreviewed" class="dev.gipo.agentreview.actions.PrevUnreviewedAction"
+                    text="Previous Unreviewed File" description="Open the diff of the previous unreviewed file" icon="AllIcons.Actions.PreviousOccurence">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift P"/>
+            </action>
             <action id="AgentReview.NextUnreviewed" class="dev.gipo.agentreview.actions.NextUnreviewedAction"
                     text="Next Unreviewed File" description="Open the diff of the next unreviewed file" icon="AllIcons.Actions.NextOccurence">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift N"/>
@@ -104,6 +108,7 @@
         <group id="AgentReview.DiffToolbar">
             <reference ref="AgentReview.ToggleReviewed"/>
             <reference ref="AgentReview.AddComment"/>
+            <reference ref="AgentReview.PrevUnreviewed"/>
             <reference ref="AgentReview.NextUnreviewed"/>
             <reference ref="AgentReview.SendGroup"/>
             <add-to-group group-id="Diff.ViewerToolbar" anchor="last"/>

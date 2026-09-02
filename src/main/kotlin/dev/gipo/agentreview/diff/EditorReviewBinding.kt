@@ -72,6 +72,7 @@ class EditorReviewBinding(
     fun render(session: ReviewSession = store.session) {
         if (editor.isDisposed) return
         clear()
+        consumePendingScroll()
         val comments = session.commentsFor(path).filter { it.startLine != null }
         for (c in comments) {
             val start = mapper.toEditor(c.side, c.startLine!!) ?: continue
@@ -90,6 +91,18 @@ class EditorReviewBinding(
     }
 
     private fun rerender() = render()
+
+    private fun consumePendingScroll() {
+        val model = dev.gipo.agentreview.scope.ReviewChangesModel.getInstance(project)
+        val pending = model.pendingScroll ?: return
+        if (!dev.gipo.agentreview.scope.ReviewPaths.matches(pending.path, path)) return
+        val line = mapper.toEditor(pending.side, pending.line) ?: return
+        if (line >= editor.document.lineCount) return
+        model.pendingScroll = null
+        val pos = com.intellij.openapi.editor.LogicalPosition(line, 0)
+        editor.caretModel.moveToLogicalPosition(pos)
+        editor.scrollingModel.scrollTo(pos, com.intellij.openapi.editor.ScrollType.CENTER)
+    }
 
     private fun highlight(start: Int, end: Int, c: Comment) {
         val doc = editor.document

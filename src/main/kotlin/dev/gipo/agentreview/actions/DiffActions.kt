@@ -124,3 +124,21 @@ class NextUnreviewedAction : AnAction(), DumbAware {
         model.openDiff(next)
     }
 }
+
+class PrevUnreviewedAction : AnAction(), DumbAware {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = e.project != null
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val model = ReviewChangesModel.getInstance(project)
+        val prev = model.prevUnreviewed(e.reviewPath())
+        if (prev == null) {
+            Notifications.info(project, "All files reviewed", "Nothing left in the current scope.")
+            return
+        }
+        model.openDiff(prev)
+    }
+}

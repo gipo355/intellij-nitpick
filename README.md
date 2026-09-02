@@ -42,7 +42,7 @@ Requires IntelliJ 2026.2+ (build 262).
    | `Alt+Shift+C` | Add comment on caret line or selection |
    | `Alt+Shift+F` | Add file-level comment |
    | `Alt+Shift+R` | Toggle file reviewed |
-   | `Alt+Shift+N` | Open next unreviewed file |
+   | `Alt+Shift+N` / `Alt+Shift+P` | Next / previous unreviewed file |
    | `Alt+Shift+Y` | Copy review Markdown to clipboard |
 
    Hover a line and click the **+** in the gutter to comment it. The diff header

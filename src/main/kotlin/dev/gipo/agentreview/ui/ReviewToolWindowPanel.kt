@@ -20,7 +20,10 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangeViewDiffRequestProcessor
 import com.intellij.openapi.vcs.changes.ui.ChangeNodeDecorator
+import com.intellij.openapi.vcs.changes.ui.DefaultChangesTreeDiffPreviewHandler
+import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
 import com.intellij.openapi.vcs.changes.ui.SimpleChangesBrowser
 import com.intellij.ui.ColoredListCellRenderer
@@ -74,6 +77,16 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     init {
         Disposer.register(parent, this)
         browser.setChangeNodeDecorator(ReviewDecorator())
+        val preview = object : TreeHandlerEditorDiffPreview(browser.viewer, DefaultChangesTreeDiffPreviewHandler) {
+            override fun getEditorTabName(wrapper: ChangeViewDiffRequestProcessor.Wrapper?): String =
+                "Agent Review" + (wrapper?.presentableName?.let { ": $it" } ?: "")
+        }
+        Disposer.register(this, preview)
+        browser.setShowDiffActionPreview(preview)
+        model.diffOpener = { rc ->
+            browser.viewer.setSelectedChanges(listOf(rc.change))
+            preview.performDiffAction()
+        }
         browser.viewer.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode == KeyEvent.VK_SPACE) {
@@ -155,6 +168,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(object : AnAction("Refresh", "Re-collect changes", AllIcons.Actions.Refresh), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = model.refresh()
             })
+            add(ActionManager.getInstance().getAction("AgentReview.PrevUnreviewed"))
             add(ActionManager.getInstance().getAction("AgentReview.NextUnreviewed"))
             add(object : AnAction("Toggle Reviewed", "Space also toggles the selected file", AllIcons.Actions.Checked), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
@@ -214,7 +228,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         model.navigate(c.path, c.startLine, side)
     }
 
-    override fun dispose() {}
+    override fun dispose() {
+        model.diffOpener = null
+    }
 
     private inner class ReviewDecorator : ChangeNodeDecorator {
         override fun decorate(change: Change, component: SimpleColoredComponent, isShowFlatten: Boolean) {

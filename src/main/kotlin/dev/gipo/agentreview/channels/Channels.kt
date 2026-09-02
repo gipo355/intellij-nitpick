@@ -112,15 +112,29 @@ object CopilotChannel {
 object AiAssistantChannel {
     private val LOG = logger<AiAssistantChannel>()
     private const val SHOW_CHAT_ACTION = "AIAssistant.ToolWindow.ShowOrFocus"
+    private val LOADER_ANCHORS = listOf(
+        "AIAssistantAddToChatAction", "AIAssistantAskInChatAction", "AIAssistant.NewChatInEditor", SHOW_CHAT_ACTION,
+    )
 
     fun isAvailable(): Boolean = ActionManager.getInstance().getAction(SHOW_CHAT_ACTION) != null
 
     fun send(project: Project, text: String, dataContext: DataContext): Boolean {
-        val action = ActionManager.getInstance().getAction(SHOW_CHAT_ACTION) ?: return false
-        ActionManager.getInstance().tryToExecute(action, null, null, ActionPlaces.UNKNOWN, true)
-        val loader = action.javaClass.classLoader
+        val am = ActionManager.getInstance()
+        val action = am.getAction(SHOW_CHAT_ACTION) ?: return false
+        am.tryToExecute(action, null, null, ActionPlaces.UNKNOWN, true)
+        // The facade lives in a content module; only loaders of that module (or its dependants) see it.
+        val facadeClass = LOADER_ANCHORS.mapNotNull { am.getAction(it)?.javaClass?.classLoader }
+            .firstNotNullOfOrNull { loader ->
+                try {
+                    Class.forName("com.intellij.ml.llm.core.AIAContentFacade", true, loader)
+                } catch (e: ClassNotFoundException) {
+                    null
+                }
+            } ?: run {
+            LOG.warn("AIAContentFacade not reachable from any anchor action")
+            return false
+        }
         return try {
-            val facadeClass = Class.forName("com.intellij.ml.llm.core.AIAContentFacade", true, loader)
             val companion = facadeClass.getField("Companion").get(null)
             val facade = companion.javaClass.getMethod("getInstance", Project::class.java).invoke(companion, project)
             val panel = facadeClass.getMethod("getPanel").invoke(facade)
