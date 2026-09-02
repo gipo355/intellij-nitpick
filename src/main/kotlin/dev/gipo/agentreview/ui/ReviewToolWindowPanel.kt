@@ -229,6 +229,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(ActionManager.getInstance().getAction("AgentReview.WriteFile"))
             add(ActionManager.getInstance().getAction("AgentReview.SendGroup"))
             add(Separator.getInstance())
+            add(object : AnAction("Reset Reviewed Marks", "Unmark every file, keep comments", AllIcons.Actions.Rollback), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = store.update { it.copy(reviewed = emptyMap()) }
+            })
             add(object : AnAction("Clear Resolved Comments", "Delete comments the agent already resolved", AllIcons.Actions.Cancel), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = store.update { s -> s.copy(comments = s.comments.filterNot { it.resolved }) }
             })
