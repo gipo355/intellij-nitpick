@@ -21,6 +21,13 @@ data class Scope(
     /** Human label for [base] when it is a resolved hash (e.g. `merge-base(main)`). */
     val baseLabel: String? = null,
 ) {
+    /** Session key. Working-tree scopes share one session per kind; ranges and commits get their own. */
+    fun key(): String = when (kind) {
+        ScopeKind.RANGE -> "range:${base}..${head ?: "HEAD"}"
+        ScopeKind.COMMIT -> "commit:$head"
+        else -> kind.name.lowercase()
+    }
+
     fun describe(): String = when (kind) {
         ScopeKind.UNCOMMITTED -> "uncommitted changes"
         ScopeKind.STAGED -> "staged changes"
@@ -82,7 +89,10 @@ data class ReviewSession(
     val reviewed: Map<String, String> = emptyMap(),
     val notes: String = "",
     val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
 ) {
+    val isEmpty: Boolean get() = comments.isEmpty() && reviewed.isEmpty() && notes.isBlank()
+
     fun commentsFor(path: String): List<Comment> =
         comments.filter { it.path == path || it.path.endsWith("/$path") || path.endsWith("/${it.path}") }
 
@@ -100,3 +110,10 @@ val commentOrder: Comparator<Comment> = compareBy<Comment> { it.path }
     .thenBy { it.startLine ?: 0 }
     .thenBy { it.endLine ?: 0 }
     .thenBy { it.createdAt }
+
+/** All sessions of a project, one per scope key. */
+@Serializable
+data class ReviewStorage(
+    val sessions: Map<String, ReviewSession> = emptyMap(),
+    val currentKey: String = Scope().key(),
+)

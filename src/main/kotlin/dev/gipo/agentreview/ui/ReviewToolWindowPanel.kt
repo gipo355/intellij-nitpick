@@ -20,7 +20,13 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.diff.impl.DiffEditorViewer
+import com.intellij.diff.tools.combined.CombinedDiffRegistry
+import com.intellij.diff.util.DiffUserDataKeys
+import com.intellij.openapi.options.advanced.AdvancedSettingsChangeListener
 import com.intellij.openapi.vcs.changes.ChangeViewDiffRequestProcessor
+import com.intellij.openapi.vcs.changes.ui.ChangesTree
+import com.intellij.openapi.vcs.changes.ui.ChangesTreeDiffPreviewHandler
 import com.intellij.openapi.vcs.changes.ui.ChangeNodeDecorator
 import com.intellij.openapi.vcs.changes.ui.DefaultChangesTreeDiffPreviewHandler
 import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
@@ -78,9 +84,31 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     init {
         Disposer.register(parent, this)
         browser.setChangeNodeDecorator(ReviewDecorator())
-        val preview = object : TreeHandlerEditorDiffPreview(browser.viewer, DefaultChangesTreeDiffPreviewHandler) {
+        val handler = GatedPreviewHandler()
+        val preview = object : TreeHandlerEditorDiffPreview(browser.viewer, handler) {
             override fun getEditorTabName(wrapper: ChangeViewDiffRequestProcessor.Wrapper?): String =
                 "Agent Review" + (wrapper?.presentableName?.let { ": $it" } ?: "")
+
+            override fun handleDoubleClick(e: MouseEvent): Boolean {
+                handler.passNext = true
+                return super.handleDoubleClick(e)
+            }
+
+            override fun handleEnterKey(): Boolean {
+                handler.passNext = true
+                return super.handleEnterKey()
+            }
+
+            /** The combined (continuous) viewer builds its toolbar from context actions, not from action groups. */
+            override fun createViewer(): DiffEditorViewer {
+                val viewer = super.createViewer()
+                if (viewer.javaClass.name.contains("Combined")) {
+                    val existing = viewer.context.getUserData(DiffUserDataKeys.CONTEXT_ACTIONS).orEmpty()
+                    val ours = ActionManager.getInstance().getAction("AgentReview.DiffToolbar")
+                    viewer.context.putUserData(DiffUserDataKeys.CONTEXT_ACTIONS, existing + ours)
+                }
+                return viewer
+            }
         }
         Disposer.register(this, preview)
         browser.setShowDiffActionPreview(preview)
@@ -93,8 +121,17 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         model.diffOpener = { rc ->
             browser.viewer.setSelectedChanges(listOf(rc.change))
+            handler.passNext = true
             preview.performDiffAction()
         }
+        project.messageBus.connect(this).subscribe(AdvancedSettingsChangeListener.TOPIC, object : AdvancedSettingsChangeListener {
+            override fun advancedSettingChanged(id: String, oldValue: Any, newValue: Any) {
+                if (id != "enable.combined.diff" || !preview.isPreviewOpen()) return
+                preview.closePreview()
+                handler.passNext = true
+                ApplicationManager.getApplication().invokeLater({ preview.openPreview(false) }, project.disposed)
+            }
+        })
         browser.viewer.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode == KeyEvent.VK_SPACE) {
@@ -190,11 +227,18 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(object : AnAction("Clear Resolved Comments", "Delete comments the agent already resolved", AllIcons.Actions.Cancel), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = store.update { s -> s.copy(comments = s.comments.filterNot { it.resolved }) }
             })
-            add(object : AnAction("Clear Session", "Delete all comments and reviewed marks", AllIcons.Actions.GC), DumbAware {
+            add(object : AnAction("Clear Session", "Delete this scope's comments and reviewed marks", AllIcons.Actions.GC), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val ok = Messages.showYesNoDialog(project, "Delete all comments and reviewed marks?", "Clear Review Session", null)
+                    val ok = Messages.showYesNoDialog(project, "Delete all comments and reviewed marks of ${store.session.scope.describe()}?", "Clear Review Session", null)
                     if (ok == Messages.YES) store.clear()
                 }
+            })
+            add(object : AnAction("Forget Other Sessions", "Drop saved sessions of other scopes", null), DumbAware {
+                override fun update(e: AnActionEvent) {
+                    e.presentation.isEnabled = store.sessionCount > 1
+                }
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                override fun actionPerformed(e: AnActionEvent) = store.forgetOtherSessions()
             })
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("AgentReviewToolbar", group, true)
@@ -221,6 +265,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             if (stale > 0) append(" · $stale stale")
             append(" · $open open comments")
             append(" · ${session.scope.describe()}")
+            val others = store.sessionCount - (if (session.isEmpty) 0 else 1)
+            if (others > 0) append(" · $others other session${if (others > 1) "s" else ""} saved")
         }
     }
 
@@ -238,6 +284,30 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     override fun dispose() {
         model.diffOpener = null
+    }
+
+    /**
+     * Follows tree selection only when "open diff on single click" is on, or for one explicit
+     * open (double-click, Enter, navigation). Otherwise the preview keeps showing what it shows.
+     */
+    private inner class GatedPreviewHandler : ChangesTreeDiffPreviewHandler() {
+        @Volatile
+        var passNext = false
+        private var cached: List<ChangeViewDiffRequestProcessor.Wrapper> = emptyList()
+
+        override fun iterateSelectedChanges(tree: ChangesTree): Iterable<ChangeViewDiffRequestProcessor.Wrapper> {
+            if (AgentReviewSettings.getInstance().state.openDiffOnSingleClick || passNext) {
+                passNext = false
+                cached = DefaultChangesTreeDiffPreviewHandler.iterateSelectedChanges(tree).toList()
+            }
+            return cached
+        }
+
+        override fun iterateAllChanges(tree: ChangesTree): Iterable<ChangeViewDiffRequestProcessor.Wrapper> =
+            DefaultChangesTreeDiffPreviewHandler.iterateAllChanges(tree)
+
+        override fun selectChange(tree: ChangesTree, change: ChangeViewDiffRequestProcessor.Wrapper) =
+            DefaultChangesTreeDiffPreviewHandler.selectChange(tree, change)
     }
 
     private inner class ReviewDecorator : ChangeNodeDecorator {

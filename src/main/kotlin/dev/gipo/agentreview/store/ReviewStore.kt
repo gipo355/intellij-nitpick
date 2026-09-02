@@ -11,6 +11,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.util.messages.Topic
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ReviewSession
+import dev.gipo.agentreview.model.ReviewStorage
 import dev.gipo.agentreview.model.Scope
 import kotlinx.serialization.json.Json
 
@@ -22,7 +23,7 @@ interface ReviewListener {
     }
 }
 
-/** One review session per project, persisted in workspace.xml. */
+/** One session per scope key, persisted in workspace.xml. */
 @State(name = "AgentReviewSession", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
 class ReviewStore(private val project: Project) : PersistentStateComponent<ReviewStore.State> {
 
@@ -31,23 +32,45 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
     }
 
     @Volatile
-    var session: ReviewSession = ReviewSession()
-        private set
+    private var storage: ReviewStorage = ReviewStorage()
 
-    override fun getState(): State = State().also { it.json = json.encodeToString(ReviewSession.serializer(), session) }
+    val session: ReviewSession
+        get() = storage.sessions[storage.currentKey] ?: ReviewSession()
+
+    val sessionCount: Int get() = storage.sessions.count { !it.value.isEmpty }
+
+    override fun getState(): State = State().also {
+        val current = storage.currentKey
+        val kept = storage.sessions
+            .filter { (k, v) -> k == current || !v.isEmpty }
+            .entries.sortedByDescending { it.value.updatedAt }
+            .take(MAX_SESSIONS)
+            .associate { it.key to it.value }
+        it.json = json.encodeToString(ReviewStorage.serializer(), storage.copy(sessions = kept))
+    }
 
     override fun loadState(state: State) {
         if (state.json.isBlank()) return
-        session = try {
-            json.decodeFromString(ReviewSession.serializer(), state.json)
+        storage = try {
+            if (state.json.contains("\"sessions\"")) {
+                json.decodeFromString(ReviewStorage.serializer(), state.json)
+            } else {
+                // Pre-0.2 format: a single session.
+                val legacy = json.decodeFromString(ReviewSession.serializer(), state.json)
+                ReviewStorage(mapOf(legacy.scope.key() to legacy), legacy.scope.key())
+            }
         } catch (e: Exception) {
-            LOG.warn("Discarding unreadable review session", e)
-            ReviewSession()
+            LOG.warn("Discarding unreadable review state", e)
+            ReviewStorage()
         }
     }
 
     fun update(transform: (ReviewSession) -> ReviewSession) {
-        val updated = synchronized(this) { transform(session).also { session = it } }
+        val updated = synchronized(this) {
+            val next = transform(session).copy(updatedAt = System.currentTimeMillis())
+            storage = storage.copy(sessions = storage.sessions + (storage.currentKey to next))
+            next
+        }
         val app = ApplicationManager.getApplication()
         // Listeners touch editors and Swing; MCP calls arrive on a coroutine thread.
         if (app.isDispatchThread) publish(updated) else app.invokeLater({ publish(updated) }, project.disposed)
@@ -68,13 +91,31 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
         if (hash == null) s.copy(reviewed = s.reviewed - path) else s.copy(reviewed = s.reviewed + (path to hash))
     }
 
-    fun setScope(scope: Scope) = update { it.copy(scope = scope) }
+    /** Switches to the session of [scope], creating it when needed. */
+    fun setScope(scope: Scope) {
+        synchronized(this) {
+            val key = scope.key()
+            val existing = storage.sessions[key]?.copy(scope = scope) ?: ReviewSession(scope = scope)
+            storage = ReviewStorage(storage.sessions + (key to existing), key)
+        }
+        update { it }
+    }
 
     fun setNotes(notes: String) = update { it.copy(notes = notes) }
 
+    /** Wipes the current session's comments, marks and notes. */
     fun clear() = update { ReviewSession(scope = it.scope) }
 
+    /** Drops every session except the current one. */
+    fun forgetOtherSessions() {
+        synchronized(this) {
+            storage = storage.copy(sessions = storage.sessions.filterKeys { it == storage.currentKey })
+        }
+        update { it }
+    }
+
     companion object {
+        private const val MAX_SESSIONS = 30
         private val LOG = logger<ReviewStore>()
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 

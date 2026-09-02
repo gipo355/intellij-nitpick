@@ -1,5 +1,6 @@
 package dev.gipo.agentreview.ui
 
+import com.intellij.diff.tools.combined.CombinedDiffRegistry
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -26,8 +27,14 @@ class ReviewToolWindowFactory : ToolWindowFactory, DumbAware {
             SettingToggle("Mark Reviewed When Diff Opens", AllIcons.Actions.SetDefault, AgentReviewState::autoMarkReviewedOnOpen),
             SettingToggle("Mark Reviewed When Diff Closes", AllIcons.Actions.Exit, AgentReviewState::autoMarkReviewedOnClose),
         )
-        toolWindow.setTitleActions(toggles)
-        toolWindow.setAdditionalGearActions(DefaultActionGroup(toggles))
+        val continuous = object : ToggleAction("Continuous Diff (All Files in One View)", "IDE-wide diff setting, also used by the Commit tool window", AllIcons.Actions.ListFiles), DumbAware {
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+            override fun isSelected(e: AnActionEvent): Boolean = CombinedDiffRegistry.isEnabled()
+            override fun setSelected(e: AnActionEvent, state: Boolean) = CombinedDiffRegistry.setCombinedDiffEnabled(state)
+        }
+        val all = toggles + continuous
+        toolWindow.setTitleActions(all)
+        toolWindow.setAdditionalGearActions(DefaultActionGroup(all))
     }
 
     /** Header quick toggle bound to one boolean setting. */

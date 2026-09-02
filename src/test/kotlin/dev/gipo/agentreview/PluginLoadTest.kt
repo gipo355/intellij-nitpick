@@ -38,6 +38,7 @@ class PluginLoadTest : BasePlatformTestCase() {
         val state = store.state
         val fresh = ReviewStore(project)
         fresh.loadState(state)
+        assertEquals(store.session.scope.key(), fresh.session.scope.key())
         assertEquals(1, fresh.session.comments.size)
         assertEquals("hello", fresh.session.comments[0].text)
         assertEquals(ReviewState.REVIEWED, fresh.session.reviewState("a.kt", "h1"))
@@ -45,6 +46,29 @@ class PluginLoadTest : BasePlatformTestCase() {
 
         val md = ReviewExport.markdown(project)
         assertTrue(md, md.contains("`a.kt:3` - hello"))
+        store.clear()
+    }
+}
+
+class SessionPerScopeTest : com.intellij.testFramework.fixtures.BasePlatformTestCase() {
+    fun testScopesKeepSeparateSessions() {
+        val store = ReviewStore.getInstance(project)
+        store.setScope(dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "c", head = "d"))
+        store.clear()
+        store.addComment(Comment(path = "x.kt", startLine = 1, text = "cd"))
+        store.setScope(dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "a", head = "b"))
+        assertTrue(store.session.comments.isEmpty())
+        store.setScope(dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "c", head = "d"))
+        assertEquals("cd", store.session.comments.single().text)
+
+        // Legacy single-session state still loads.
+        val legacy = ReviewStore.State().also {
+            it.json = """{"scope":{"kind":"UNCOMMITTED"},"comments":[{"id":"1","path":"y.kt","startLine":2,"text":"old"}],"reviewed":{},"notes":""}"""
+        }
+        val fresh = ReviewStore(project)
+        fresh.loadState(legacy)
+        assertEquals("old", fresh.session.comments.single().text)
+        store.forgetOtherSessions()
         store.clear()
     }
 }
