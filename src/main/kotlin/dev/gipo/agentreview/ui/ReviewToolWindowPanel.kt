@@ -32,7 +32,10 @@ import com.intellij.openapi.vcs.changes.ui.DefaultChangesTreeDiffPreviewHandler
 import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
 import com.intellij.openapi.vcs.changes.ui.SimpleChangesBrowser
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.ui.ColoredListCellRenderer
+import com.intellij.ui.PopupHandler
+import dev.gipo.agentreview.diff.CommentEditorPopup
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
@@ -160,6 +163,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             }
         })
 
+        PopupHandler.installPopupMenu(commentsList, commentsPopup(), "AgentReviewComments")
+
         notes.lineWrap = true
         notes.wrapStyleWord = true
         notes.emptyText.text = "Review-level notes for the agent…"
@@ -244,6 +249,44 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val toolbar = ActionManager.getInstance().createActionToolbar("AgentReviewToolbar", group, true)
         toolbar.targetComponent = this
         return toolbar.component
+    }
+
+    private fun commentsPopup(): DefaultActionGroup {
+        fun selected(): Comment? = commentsList.selectedValue
+        fun action(text: String, icon: javax.swing.Icon?, enabled: (Comment) -> Boolean = { true }, run: (Comment) -> Unit) =
+            object : AnAction(text, null, icon), DumbAware {
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+                override fun update(e: AnActionEvent) {
+                    e.presentation.isEnabled = selected()?.let(enabled) ?: false
+                }
+                override fun actionPerformed(e: AnActionEvent) {
+                    selected()?.let(run)
+                }
+            }
+        return DefaultActionGroup(
+            action("Open in Diff", AllIcons.Actions.Diff, { !it.isReviewLevel }) { open(it) },
+            action("Edit…", AllIcons.Actions.Edit) { c ->
+                CommentEditorPopup.show(project, commentsList, c.type, c.text) { text, type ->
+                    store.updateComment(c.id) { it.copy(text = text, type = type) }
+                }
+            },
+            object : AnAction("Resolve", null, AllIcons.RunConfigurations.TestPassed), DumbAware {
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+                override fun update(e: AnActionEvent) {
+                    val c = selected()
+                    e.presentation.isEnabled = c != null
+                    e.presentation.text = if (c?.resolved == true) "Reopen" else "Resolve"
+                }
+                override fun actionPerformed(e: AnActionEvent) {
+                    selected()?.let { c -> store.updateComment(c.id) { it.copy(resolved = !it.resolved) } }
+                }
+            },
+            action("Copy Location", AllIcons.Actions.Copy) {
+                CopyPasteManager.getInstance().setContents(java.awt.datatransfer.StringSelection(it.location()))
+            },
+            Separator.getInstance(),
+            action("Delete", AllIcons.Actions.GC) { store.removeComment(it.id) },
+        )
     }
 
     private fun refreshUi() {
