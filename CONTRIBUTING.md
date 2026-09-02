@@ -43,12 +43,19 @@ Repeat the same steps with a new zip to update. Uninstall from the Installed tab
    usually within two business days.
 3. Every later version goes through Gradle with the token:
    ```bash
-   export PUBLISH_TOKEN=...
+   export PUBLISH_TOKEN=perm:...
    ./gradlew publishPlugin
    ```
-   `build.gradle.kts` already reads `PUBLISH_TOKEN`. Nothing else about your
-   account is needed: Marketplace matches the upload by plugin id and rejects a
-   version that already exists.
+   `build.gradle.kts` reads `PUBLISH_TOKEN` from the environment. There is no
+   project key or other account setting: Marketplace matches the upload by the
+   plugin id `dev.gipo.nitpick` that the first manual upload registered. It
+   rejects a version that already exists, so bump `version` first. The release
+   channel defaults to stable; set `intellijPlatform.publishing.channels` for a
+   beta channel. Never commit the token.
+
+   From CI: store the token as a repository secret and run the same command,
+   for example in a GitHub Actions job triggered by a tag. Wait until the first
+   manual review has cleared before wiring that up.
 4. Release checklist: bump `version` in `build.gradle.kts`, update
    `<change-notes>` in `plugin.xml`, then
    ```bash
