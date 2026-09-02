@@ -98,6 +98,29 @@ one-click config for Claude Code, Cursor, VS Code; others take the SSE URL).
 - `agent_review_add_comment(path, text, line, end_line, type)` — ask the reviewer something.
 - `agent_review_status()` — per-file reviewed / stale / unreviewed and open counts.
 
+The server is plain HTTP on localhost, so agents running outside the IDE
+(tmux, another terminal, Codex, OpenCode) connect the same way. The settings
+page shows the SSE URL (`http://127.0.0.1:<port>/sse`), the streamable URL, and
+an auth token if restricted mode is on.
+
+```bash
+# Claude Code
+claude mcp add --transport sse jetbrains http://127.0.0.1:64342/sse
+# with a token: claude mcp add --transport sse jetbrains http://127.0.0.1:64342/sse \
+#   --header "Authorization: Bearer <token>"
+```
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.jetbrains]
+url = "http://127.0.0.1:64342/sse"
+```
+
+```jsonc
+// OpenCode: opencode.json
+{ "mcp": { "jetbrains": { "type": "remote", "url": "http://127.0.0.1:64342/sse", "enabled": true } } }
+```
+
 Suggested line for your agent's instructions file (CLAUDE.md, AGENTS.md…):
 
 > When I say "address the review", call `agent_review_get_review` (format json),
