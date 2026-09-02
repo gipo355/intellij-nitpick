@@ -6,7 +6,9 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.CurrentContentRevision
+import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.vcsUtil.VcsUtil
 import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
@@ -91,10 +93,28 @@ object ScopeChanges {
 object ReviewPaths {
     fun relative(project: Project, path: FilePath): String = relative(project, path.path)
 
+    /** Relative to the project root, else to the VCS root, else absolute. Always `/` separated. */
     fun relative(project: Project, absolute: String): String {
-        val base = (project.basePath ?: return absolute).trimEnd('/') + "/"
-        return if (absolute.startsWith(base)) absolute.removePrefix(base) else absolute
+        val abs = absolute.replace('\\', '/')
+        relativeTo(project.basePath, abs)?.let { return it }
+        val root = try {
+            ProjectLevelVcsManager.getInstance(project).getVcsRootFor(VcsUtil.getFilePath(abs))?.path
+        } catch (e: Exception) {
+            null
+        }
+        relativeTo(root, abs)?.let { return it }
+        return abs
+    }
+
+    private fun relativeTo(base: String?, abs: String): String? {
+        if (base.isNullOrEmpty()) return null
+        val b = base.replace('\\', '/').trimEnd('/') + "/"
+        return if (abs.startsWith(b)) abs.removePrefix(b) else null
     }
 
     fun relative(project: Project, change: Change): String = relative(project, ChangesUtil.getFilePath(change))
+
+    /** Exact match, or one is a `/`-suffix of the other (tolerates differing roots). */
+    fun matches(a: String, b: String): Boolean =
+        a == b || a.endsWith("/$b") || b.endsWith("/$a")
 }

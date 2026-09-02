@@ -68,6 +68,14 @@
             <add-to-group group-id="AgentReview.DiffActions" anchor="last"/>
         </group>
 
+        <group id="AgentReview.DiffToolbar">
+            <reference ref="AgentReview.ToggleReviewed"/>
+            <reference ref="AgentReview.AddComment"/>
+            <reference ref="AgentReview.NextUnreviewed"/>
+            <reference ref="AgentReview.SendGroup"/>
+            <add-to-group group-id="Diff.ViewerToolbar" anchor="last"/>
+        </group>
+
         <action id="AgentReview.ReviewCommit" class="dev.gipo.agentreview.actions.ReviewCommitAction"
                 text="Review Commit with Agent Review" icon="AllIcons.Actions.PreviewDetails">
             <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>

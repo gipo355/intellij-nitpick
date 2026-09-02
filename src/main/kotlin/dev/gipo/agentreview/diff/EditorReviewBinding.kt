@@ -55,6 +55,18 @@ class EditorReviewBinding(
             override fun sessionChanged(session: ReviewSession) = render(session)
         })
         render(store.session)
+        AddCommentGutterHover(editor, this) { line -> addCommentAt(line) }
+    }
+
+    /** Opens the comment editor for a 0-based editor line (gutter "+" click). */
+    fun addCommentAt(editorLine: Int) {
+        val (side, line) = mapper.fromEditor(editorLine) ?: return
+        val doc = editor.document
+        val snippet = if (editorLine < doc.lineCount) doc.getText(com.intellij.openapi.util.TextRange(doc.getLineStartOffset(editorLine), doc.getLineEndOffset(editorLine))) else ""
+        editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(editorLine, 0))
+        CommentEditorPopup.showAtCaret(project, editor, dev.gipo.agentreview.model.CommentType.NOTE, "") { text, type ->
+            store.addComment(Comment(path = path, side = side, startLine = line, endLine = line, type = type, text = text, snippet = snippet))
+        }
     }
 
     fun render(session: ReviewSession = store.session) {

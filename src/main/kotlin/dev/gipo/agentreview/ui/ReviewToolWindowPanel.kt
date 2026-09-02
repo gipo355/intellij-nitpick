@@ -206,12 +206,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     }
 
     private fun open(c: Comment) {
-        val rc = model.find(c.path) ?: run {
-            Notifications.warn(project, "File not in scope", c.path)
-            return
-        }
+        if (c.isReviewLevel) return
         val side = if (c.side == Side.OLD) DiffSide.LEFT else DiffSide.RIGHT
-        model.openDiff(rc, c.startLine, side)
+        model.navigate(c.path, c.startLine, side)
     }
 
     override fun dispose() {}

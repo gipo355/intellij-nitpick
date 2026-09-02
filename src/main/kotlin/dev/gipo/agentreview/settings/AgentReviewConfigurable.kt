@@ -33,6 +33,9 @@ class AgentReviewConfigurable : BoundConfigurable("Agent Review") {
             }
             group("Review Flow") {
                 row {
+                    checkBox("Mark file reviewed when its diff is opened").bindSelected(s::autoMarkReviewedOnOpen)
+                }
+                row {
                     checkBox("Mark file reviewed when its diff is closed").bindSelected(s::autoMarkReviewedOnClose)
                 }
             }

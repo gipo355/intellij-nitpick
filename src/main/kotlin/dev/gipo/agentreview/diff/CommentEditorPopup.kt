@@ -5,55 +5,82 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.model.CommentType
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.event.KeyEvent
+import javax.swing.AbstractAction
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 
-/** Text area + type combo. Ctrl+Enter saves, Escape cancels. */
+/** Comment editor: type chooser, text, Cancel / Save. Ctrl+Enter saves, Esc cancels. */
 object CommentEditorPopup {
 
     fun show(project: Project, anchor: JComponent, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
-        val popup = build(type, text, onSave)
-        popup.showUnderneathOf(anchor)
+        build(type, text, onSave).showUnderneathOf(anchor)
     }
 
     fun showAtCaret(project: Project, editor: Editor, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
-        val popup = build(type, text, onSave)
-        popup.showInBestPositionFor(editor)
+        build(type, text, onSave).showInBestPositionFor(editor)
     }
 
     private fun build(type: CommentType, text: String, onSave: (String, CommentType) -> Unit): JBPopup {
         val area = JBTextArea(text, 5, 60).apply {
             lineWrap = true
             wrapStyleWord = true
-            emptyText.text = "Comment for the agent… (Ctrl+Enter to save)"
+            emptyText.text = "What should the agent change here?"
+            border = JBUI.Borders.empty(6, 8)
+            font = UIUtil.getLabelFont()
         }
-        val typeBox = ComboBox(CommentType.entries.toTypedArray()).apply { selectedItem = type }
-        val save = JButton("Save")
+        val scroll = JBScrollPane(area).apply {
+            border = JBUI.Borders.customLine(JBUI.CurrentTheme.Focus.defaultButtonColor().darker(), 1)
+            preferredSize = Dimension(JBUI.scale(520), JBUI.scale(130))
+        }
+        val typeBox = ComboBox(CommentType.entries.toTypedArray()).apply {
+            selectedItem = type
+            renderer = SimpleListCellRenderer.create { label, value, _ ->
+                label.text = value.name.lowercase().replaceFirstChar { it.uppercase() }
+                label.foreground = CommentColors.of(value)
+            }
+        }
         val header = JPanel(HorizontalLayout(8)).apply {
-            add(JBLabel("Type:"))
+            isOpaque = false
+            add(JBLabel("Type"))
             add(typeBox)
         }
-        val footer = JPanel(BorderLayout()).apply {
-            add(JBLabel("Ctrl+Enter to save, Esc to cancel").apply { foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND }, BorderLayout.WEST)
-            add(save, BorderLayout.EAST)
+
+        val cancel = JButton("Cancel")
+        val save = JButton("Save").apply { putClientProperty("JButton.buttonType", "default") }
+        val hint = JBLabel("Ctrl+Enter to save · Esc to cancel").apply {
+            foreground = UIUtil.getContextHelpForeground()
+            font = JBUI.Fonts.smallFont()
         }
-        val panel = JPanel(BorderLayout(0, 6)).apply {
-            border = JBUI.Borders.empty(8)
+        val buttons = JPanel(HorizontalLayout(6)).apply {
+            isOpaque = false
+            add(cancel)
+            add(save)
+        }
+        val footer = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(hint, BorderLayout.WEST)
+            add(buttons, BorderLayout.EAST)
+        }
+        val panel = JPanel(BorderLayout(0, 8)).apply {
+            border = JBUI.Borders.empty(10, 12, 10, 12)
             add(header, BorderLayout.NORTH)
-            add(JBScrollPane(area).apply { preferredSize = Dimension(JBUI.scale(480), JBUI.scale(120)) }, BorderLayout.CENTER)
+            add(scroll, BorderLayout.CENTER)
             add(footer, BorderLayout.SOUTH)
         }
+
         lateinit var popup: JBPopup
         val commit = {
             val value = area.text.trim()
@@ -63,10 +90,12 @@ object CommentEditorPopup {
             }
         }
         save.addActionListener { commit() }
+        cancel.addActionListener { popup.cancel() }
         area.inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.CTRL_DOWN_MASK), "save")
-        area.actionMap.put("save", object : javax.swing.AbstractAction() {
+        area.actionMap.put("save", object : AbstractAction() {
             override fun actionPerformed(e: java.awt.event.ActionEvent) = commit()
         })
+
         popup = JBPopupFactory.getInstance()
             .createComponentPopupBuilder(panel, area)
             .setRequestFocus(true)
@@ -75,7 +104,7 @@ object CommentEditorPopup {
             .setResizable(true)
             .setCancelOnClickOutside(false)
             .setCancelKeyEnabled(true)
-            .setTitle("Review Comment")
+            .setTitle(if (text.isEmpty()) "New Review Comment" else "Edit Review Comment")
             .createPopup()
         return popup
     }

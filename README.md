@@ -42,6 +42,8 @@ IDE used for compilation; override with `-PideaHome=/path`.
    | `Alt+Shift+N` | Open next unreviewed file |
    | `Alt+Shift+Y` | Copy review Markdown to clipboard |
 
+   Hover a line and click the **+** in the gutter to comment it. The diff header
+   toolbar also has Mark Reviewed, Add Comment, Next Unreviewed and Send.
    Comments render inline under the line with Edit / Resolve / Delete. Comment
    types: note, issue, question, nit, praise.
 4. In the tool window, `Space` toggles reviewed on the selected file. The
@@ -106,7 +108,7 @@ Without MCP, the same instruction works with the file channel: "read
 
 Settings | Tools | Agent Review: intro sentence, snippets on/off and max lines,
 include resolved comments, review file path, terminal tab regex, auto-submit,
-auto-mark reviewed when a diff is closed.
+auto-mark reviewed when a diff is opened or closed.
 
 ## Persistence
 

@@ -42,15 +42,17 @@ class ReviewDiffExtension : DiffExtension() {
     }
 
     private fun installAutoReviewed(project: Project, viewer: FrameDiffTool.DiffViewer, path: String, content: () -> CharSequence) {
-        if (!AgentReviewSettings.getInstance().state.autoMarkReviewedOnClose) return
+        val settings = AgentReviewSettings.getInstance().state
+        if (!settings.autoMarkReviewedOnClose && !settings.autoMarkReviewedOnOpen) return
         val hash = try {
             ContentHash.of(content())
         } catch (e: Exception) {
             return
         }
-        com.intellij.openapi.util.Disposer.register(viewer) {
-            if (AgentReviewSettings.getInstance().state.autoMarkReviewedOnClose && !project.isDisposed) {
-                ReviewStore.getInstance(project).setReviewed(path, hash)
+        if (settings.autoMarkReviewedOnOpen) ReviewStore.getInstance(project).setReviewed(path, hash)
+        if (settings.autoMarkReviewedOnClose) {
+            com.intellij.openapi.util.Disposer.register(viewer) {
+                if (!project.isDisposed) ReviewStore.getInstance(project).setReviewed(path, hash)
             }
         }
     }

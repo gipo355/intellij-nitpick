@@ -83,7 +83,8 @@ data class ReviewSession(
     val notes: String = "",
     val createdAt: Long = System.currentTimeMillis(),
 ) {
-    fun commentsFor(path: String): List<Comment> = comments.filter { it.path == path }
+    fun commentsFor(path: String): List<Comment> =
+        comments.filter { it.path == path || it.path.endsWith("/$path") || path.endsWith("/${it.path}") }
 
     fun reviewState(path: String, currentHash: String?): ReviewState {
         val stored = reviewed[path] ?: return ReviewState.UNREVIEWED

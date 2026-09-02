@@ -17,6 +17,7 @@ class AgentReviewState : BaseState() {
     var terminalAutoSubmit by property(false)
     var reviewFilePath by string(".agent-review/REVIEW.md")
     var autoMarkReviewedOnClose by property(false)
+    var autoMarkReviewedOnOpen by property(false)
 }
 
 @State(name = "AgentReviewSettings", storages = [Storage("agentReview.xml")])
