@@ -15,6 +15,7 @@ import com.intellij.diff.tools.util.side.TwosideTextDiffViewer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.settings.AgentReviewSettings
 import dev.gipo.agentreview.store.ReviewStore
@@ -44,22 +45,30 @@ class ReviewDiffExtension : DiffExtension() {
         viewer.addListener(object : DiffViewerListener() {
             override fun onAfterRediff() = bindings.forEach { it.render() }
         })
+        val isDeleted = request.getUserData(ChangeDiffRequestProducer.CHANGE_KEY)?.afterRevision == null &&
+            request.getUserData(ChangeDiffRequestProducer.CHANGE_KEY) != null
         val newContent: (() -> CharSequence)? = when (viewer) {
             is TwosideTextDiffViewer -> ({ viewer.editor2.document.charsSequence })
             is UnifiedDiffViewer -> ({ viewer.getContent(DiffSide.RIGHT).document.charsSequence })
+            is OnesideTextDiffViewer -> if (isDeleted) null else ({ viewer.editor.document.charsSequence })
             else -> null
         }
-        if (newContent != null) installAutoReviewed(project, viewer, path, newContent)
+        installAutoReviewed(project, viewer, path, newContent)
     }
 
-    private fun installAutoReviewed(project: Project, viewer: DiffViewerBase, path: String, content: () -> CharSequence) {
+    /** Hash preference: the scope model (matches the tree), then the visible document, then "unknown". */
+    private fun installAutoReviewed(project: Project, viewer: DiffViewerBase, path: String, content: (() -> CharSequence)?) {
         val settings = AgentReviewSettings.getInstance().state
         if (!settings.autoMarkReviewedOnClose && !settings.autoMarkReviewedOnOpen) return
-        val hash = try {
-            ContentHash.of(content())
-        } catch (e: Exception) {
-            return
-        }
+        val hash = ReviewChangesModel.getInstance(project).find(path)?.hash
+            ?: content?.let { c ->
+                try {
+                    ContentHash.of(c())
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            ?: ""
         if (settings.autoMarkReviewedOnOpen) ReviewStore.getInstance(project).setReviewed(path, hash)
         if (settings.autoMarkReviewedOnClose) {
             com.intellij.openapi.util.Disposer.register(viewer) {
