@@ -106,6 +106,14 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
     /** Wipes the current session's comments, marks and notes. */
     fun clear() = update { ReviewSession(scope = it.scope) }
 
+    /** Drops every session, including the current one. Scope selection is kept. */
+    fun clearAll() {
+        synchronized(this) {
+            storage = ReviewStorage(mapOf(storage.currentKey to ReviewSession(scope = session.scope)), storage.currentKey)
+        }
+        update { it }
+    }
+
     /** Drops every session except the current one. */
     fun forgetOtherSessions() {
         synchronized(this) {

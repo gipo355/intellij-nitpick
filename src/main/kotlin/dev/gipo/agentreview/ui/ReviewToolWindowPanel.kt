@@ -241,6 +241,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     if (ok == Messages.YES) store.clear()
                 }
             })
+            add(object : AnAction("Clear All Sessions", "Delete comments and marks of every scope in this project", null), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val ok = Messages.showYesNoDialog(project, "Delete every saved review session of this project?", "Clear All Sessions", null)
+                    if (ok == Messages.YES) store.clearAll()
+                }
+            })
             add(object : AnAction("Forget Other Sessions", "Drop saved sessions of other scopes", null), DumbAware {
                 override fun update(e: AnActionEvent) {
                     e.presentation.isEnabled = store.sessionCount > 1
