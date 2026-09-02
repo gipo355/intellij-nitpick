@@ -53,11 +53,23 @@ class ReviewDiffExtension : DiffExtension() {
             is OnesideTextDiffViewer -> if (isDeleted) null else ({ viewer.editor.document.charsSequence })
             else -> null
         }
-        installAutoReviewed(project, viewer, path, newContent)
+        val combined = context.javaClass.name.contains("Combined")
+        installAutoReviewed(project, viewer, path, newContent, combined, bindings.map { it.editor })
     }
 
-    /** Hash preference: the scope model (matches the tree), then the visible document, then "unknown". */
-    private fun installAutoReviewed(project: Project, viewer: DiffViewerBase, path: String, content: (() -> CharSequence)?) {
+    /**
+     * Hash preference: the scope model (matches the tree), then the visible document, then "unknown".
+     * In the combined (continuous) viewer many blocks exist at once, so "opened" means the block got
+     * focus and "closed" means it lost it.
+     */
+    private fun installAutoReviewed(
+        project: Project,
+        viewer: DiffViewerBase,
+        path: String,
+        content: (() -> CharSequence)?,
+        combined: Boolean,
+        editors: List<com.intellij.openapi.editor.ex.EditorEx>,
+    ) {
         val settings = AgentReviewSettings.getInstance().state
         if (!settings.autoMarkReviewedOnClose && !settings.autoMarkReviewedOnOpen) return
         val hash = ReviewChangesModel.getInstance(project).find(path)?.hash
@@ -69,11 +81,27 @@ class ReviewDiffExtension : DiffExtension() {
                 }
             }
             ?: ""
-        if (settings.autoMarkReviewedOnOpen) ReviewStore.getInstance(project).setReviewed(path, hash)
-        if (settings.autoMarkReviewedOnClose) {
-            com.intellij.openapi.util.Disposer.register(viewer) {
-                if (!project.isDisposed) ReviewStore.getInstance(project).setReviewed(path, hash)
+        val mark = { if (!project.isDisposed) ReviewStore.getInstance(project).setReviewed(path, hash) }
+        if (!combined) {
+            if (settings.autoMarkReviewedOnOpen) mark()
+            if (settings.autoMarkReviewedOnClose) com.intellij.openapi.util.Disposer.register(viewer) { mark() }
+            return
+        }
+        var visited = false
+        val listener = object : java.awt.event.FocusAdapter() {
+            override fun focusGained(e: java.awt.event.FocusEvent) {
+                visited = true
+                if (AgentReviewSettings.getInstance().state.autoMarkReviewedOnOpen) mark()
             }
+
+            override fun focusLost(e: java.awt.event.FocusEvent) {
+                if (visited && AgentReviewSettings.getInstance().state.autoMarkReviewedOnClose) mark()
+            }
+        }
+        editors.forEach { it.contentComponent.addFocusListener(listener) }
+        com.intellij.openapi.util.Disposer.register(viewer) {
+            editors.forEach { if (!it.isDisposed) it.contentComponent.removeFocusListener(listener) }
+            if (visited && AgentReviewSettings.getInstance().state.autoMarkReviewedOnClose) mark()
         }
     }
 
