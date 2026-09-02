@@ -11,6 +11,7 @@ import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import git4idea.changes.GitChangeUtils
+import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepositoryManager
 
 /** Resolves a [Scope] to the list of changes to review. Runs git, call off the EDT. */
@@ -55,6 +56,25 @@ object ScopeChanges {
     fun currentBranch(project: Project): String? {
         val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return null
         return repo.currentBranchName ?: repo.currentRevision?.take(8)
+    }
+
+    /** Local branches first, then remote. Current branch excluded. */
+    fun branchNames(project: Project): List<String> {
+        val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return emptyList()
+        val current = repo.currentBranchName
+        val local = repo.branches.localBranches.map { it.name }.filter { it != current }.sorted()
+        val remote = repo.branches.remoteBranches.map { it.name }.sorted()
+        return local + remote
+    }
+
+    /** `git merge-base ref HEAD`, or null when git cannot resolve it. */
+    fun mergeBase(project: Project, ref: String): String? {
+        val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return null
+        return try {
+            GitHistoryUtils.getMergeBase(project, repo.root, ref, "HEAD")?.rev
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /** Hash of the "after" side; null when the file was deleted. */

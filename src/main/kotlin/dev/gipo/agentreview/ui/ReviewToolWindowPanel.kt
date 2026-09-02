@@ -9,6 +9,11 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.util.concurrency.AppExecutorUtil
+import dev.gipo.agentreview.scope.ScopeChanges
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -254,11 +259,20 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     override fun actionPerformed(e: AnActionEvent) = setScope(Scope(kind))
                 })
             }
-            group.add(object : AnAction("Commit Range…"), DumbAware {
+            group.add(Separator.getInstance())
+            group.add(object : AnAction("Compare with Branch…", "Review everything on HEAD since it diverged from a branch (merge-base)", null), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = chooseBranch(e)
+            })
+            group.add(object : AnAction("Commit Range…", "Enter base..head, e.g. main..HEAD or abc123..def456", null), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val base = Messages.showInputDialog(project, "Base ref (e.g. main, origin/main, HEAD~3):", "Review Commit Range", null, store.session.scope.base ?: "main", null)
-                        ?: return
-                    setScope(Scope(ScopeKind.RANGE, base = base.trim(), head = "HEAD"))
+                    val current = store.session.scope.let { if (it.kind == ScopeKind.RANGE) "${it.baseLabel ?: it.base}..${it.head ?: "HEAD"}" else "main..HEAD" }
+                    val input = Messages.showInputDialog(project, "Range as base..head (three dots = since merge-base):", "Review Commit Range", null, current, null)
+                        ?.trim()?.takeIf { it.isNotEmpty() } ?: return
+                    val threeDot = input.contains("...")
+                    val parts = input.split("...", "..").map { it.trim() }
+                    val base = parts.getOrNull(0)?.takeIf { it.isNotEmpty() } ?: return
+                    val head = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: "HEAD"
+                    if (threeDot) setMergeBaseScope(base, head) else setScope(Scope(ScopeKind.RANGE, base = base, head = head))
                 }
             })
             group.add(object : AnAction("Single Commit…"), DumbAware {
@@ -274,6 +288,37 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         private fun setScope(scope: Scope) {
             store.setScope(scope)
             model.refresh()
+        }
+
+        private fun chooseBranch(e: AnActionEvent) {
+            ReadAction.nonBlocking<List<String>> { ScopeChanges.branchNames(project) }
+                .finishOnUiThread(ModalityState.defaultModalityState()) { names ->
+                    if (names.isEmpty()) {
+                        Notifications.warn(project, "No branches found", "Is this a git repository?")
+                        return@finishOnUiThread
+                    }
+                    JBPopupFactory.getInstance().createPopupChooserBuilder(names)
+                        .setTitle("Review Changes Since Branch")
+                        .setNamerForFiltering { it }
+                        .setItemChosenCallback { setMergeBaseScope(it, "HEAD") }
+                        .createPopup()
+                        .showInBestPositionFor(e.dataContext)
+                }
+                .submit(AppExecutorUtil.getAppExecutorService())
+        }
+
+        /** base = merge-base(ref, head), like a pull request diff. */
+        private fun setMergeBaseScope(ref: String, head: String) {
+            ReadAction.nonBlocking<String?> { ScopeChanges.mergeBase(project, ref) }
+                .finishOnUiThread(ModalityState.defaultModalityState()) { mb ->
+                    if (mb == null) {
+                        Notifications.warn(project, "Cannot resolve merge-base", "git merge-base $ref $head failed. Using $ref directly.")
+                        setScope(Scope(ScopeKind.RANGE, base = ref, head = head))
+                    } else {
+                        setScope(Scope(ScopeKind.RANGE, base = mb, head = head, baseLabel = "merge-base($ref)"))
+                    }
+                }
+                .submit(AppExecutorUtil.getAppExecutorService())
         }
     }
 }

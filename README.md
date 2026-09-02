@@ -22,8 +22,16 @@ IDE used for compilation; override with `-PideaHome=/path`.
 ## Workflow
 
 1. Open the **Agent Review** tool window (right side).
-2. Pick a scope: uncommitted (default), staged, unstaged, commit range, or a
-   single commit. Git Log → right-click a commit → *Review Commit with Agent Review*.
+2. Pick a scope from the toolbar combo:
+   - uncommitted (default), staged, unstaged;
+   - *Compare with Branch…* picks a branch and reviews everything on HEAD since
+     the merge-base, like a pull request;
+   - *Commit Range…* takes `base..head` (or `base...head` for merge-base);
+   - *Single Commit…*.
+
+   Or from Git Log: right-click one commit → *Review Commit with Agent Review*.
+   Ctrl+click several commits → *Review Range of N Commits* (oldest vs newest,
+   same as the log's *Compare Versions*).
 3. Double-click a file to open its diff. In the diff:
 
    | Shortcut | Action |

@@ -18,12 +18,14 @@ data class Scope(
     val base: String? = null,
     /** Head ref for RANGE, commit hash for COMMIT. */
     val head: String? = null,
+    /** Human label for [base] when it is a resolved hash (e.g. `merge-base(main)`). */
+    val baseLabel: String? = null,
 ) {
     fun describe(): String = when (kind) {
         ScopeKind.UNCOMMITTED -> "uncommitted changes"
         ScopeKind.STAGED -> "staged changes"
         ScopeKind.UNSTAGED -> "unstaged changes"
-        ScopeKind.RANGE -> "commits ${base}..${head ?: "HEAD"}"
+        ScopeKind.RANGE -> "commits ${baseLabel ?: base?.take(8)}..${head?.take(8) ?: "HEAD"}"
         ScopeKind.COMMIT -> "commit ${head?.take(8)}"
     }
 }

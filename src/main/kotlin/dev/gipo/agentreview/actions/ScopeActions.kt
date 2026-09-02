@@ -23,17 +23,25 @@ class ReviewCommitAction : AnAction(), DumbAware {
 
     override fun update(e: AnActionEvent) {
         val commits = e.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)?.commits
-        e.presentation.isEnabledAndVisible = e.project != null && commits != null && commits.size in 1..2
+        val n = commits?.size ?: 0
+        e.presentation.isEnabledAndVisible = e.project != null && n >= 1
+        e.presentation.text = when {
+            n <= 1 -> "Review Commit with Agent Review"
+            else -> "Review Range of $n Commits with Agent Review"
+        }
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val commits = e.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)?.commits ?: return
+        // Log rows are newest first. Two or more commits: diff oldest vs newest,
+        // same semantics as the log's "Compare Versions".
+        val newest = commits.first().hash.asString()
+        val oldest = commits.last().hash.asString()
         val scope = if (commits.size == 1) {
-            Scope(ScopeKind.COMMIT, head = commits[0].hash.asString())
+            Scope(ScopeKind.COMMIT, head = newest)
         } else {
-            // Two commits selected: review everything between the older and the newer one.
-            Scope(ScopeKind.RANGE, base = commits[1].hash.asString(), head = commits[0].hash.asString())
+            Scope(ScopeKind.RANGE, base = oldest, head = newest)
         }
         startReview(project, scope)
     }
