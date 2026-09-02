@@ -1,0 +1,6 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceInterface="dev.gipo.agentreview.channels.TerminalChannel"
+                        serviceImplementation="dev.gipo.agentreview.channels.TerminalChannelImpl"/>
+    </extensions>
+</idea-plugin>

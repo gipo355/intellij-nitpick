@@ -1,0 +1,81 @@
+<idea-plugin>
+    <id>dev.gipo.agentreview</id>
+    <name>Agent Review</name>
+    <vendor email="gipo18649ah@gmail.com">gipo355</vendor>
+    <description><![CDATA[
+        Review agent-authored changes in IntelliJ's diff viewer: inline comments, mark files reviewed,
+        then hand the review to any coding agent (clipboard, terminal, file, Copilot, AI Assistant, MCP).
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.vcs</depends>
+    <depends>Git4Idea</depends>
+    <depends optional="true" config-file="agentreview-terminal.xml">org.jetbrains.plugins.terminal</depends>
+    <depends optional="true" config-file="agentreview-mcp.xml">com.intellij.mcpServer</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="dev.gipo.agentreview.store.ReviewStore"/>
+        <applicationService serviceImplementation="dev.gipo.agentreview.settings.AgentReviewSettings"/>
+        <applicationConfigurable parentId="tools" instance="dev.gipo.agentreview.settings.AgentReviewConfigurable"
+                                 id="dev.gipo.agentreview.settings" displayName="Agent Review"/>
+
+        <toolWindow id="Agent Review" anchor="right" icon="AllIcons.Actions.PreviewDetails" secondary="false"
+                    factoryClass="dev.gipo.agentreview.ui.ReviewToolWindowFactory"/>
+
+        <diff.DiffExtension implementation="dev.gipo.agentreview.diff.ReviewDiffExtension"/>
+
+        <vcs.changes.changesViewNodeAction implementation="dev.gipo.agentreview.ui.ReviewedHoverAction"/>
+
+        <notificationGroup id="Agent Review" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <group id="AgentReview.DiffActions">
+            <action id="AgentReview.AddComment" class="dev.gipo.agentreview.actions.AddCommentAction"
+                    text="Add Review Comment" description="Comment on the selected lines" icon="AllIcons.Toolwindows.ToolWindowMessages">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift C"/>
+            </action>
+            <action id="AgentReview.AddFileComment" class="dev.gipo.agentreview.actions.AddFileCommentAction"
+                    text="Add File Comment" description="Comment on the whole file">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift F"/>
+            </action>
+            <action id="AgentReview.ToggleReviewed" class="dev.gipo.agentreview.actions.ToggleReviewedAction"
+                    text="Toggle File Reviewed" description="Mark or unmark this file as reviewed" icon="AllIcons.Actions.Checked">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift R"/>
+            </action>
+            <action id="AgentReview.NextUnreviewed" class="dev.gipo.agentreview.actions.NextUnreviewedAction"
+                    text="Next Unreviewed File" description="Open the diff of the next unreviewed file" icon="AllIcons.Actions.NextOccurence">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift N"/>
+            </action>
+            <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>
+            <add-to-group group-id="Diff.KeymapGroup" anchor="last"/>
+        </group>
+
+        <group id="AgentReview.SendGroup" text="Send Review To" popup="true" icon="AllIcons.Actions.Upload">
+            <action id="AgentReview.CopyMarkdown" class="dev.gipo.agentreview.actions.CopyReviewAction"
+                    text="Copy Review to Clipboard" icon="AllIcons.Actions.Copy">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift Y"/>
+            </action>
+            <action id="AgentReview.SendToTerminal" class="dev.gipo.agentreview.actions.SendToTerminalAction"
+                    text="Send to Terminal Agent" description="Paste the review into a terminal tab (claude, codex, opencode, pi…)"
+                    icon="AllIcons.Nodes.Console"/>
+            <action id="AgentReview.SendToCopilot" class="dev.gipo.agentreview.actions.SendToCopilotAction"
+                    text="Send to GitHub Copilot Chat"/>
+            <action id="AgentReview.SendToAiAssistant" class="dev.gipo.agentreview.actions.SendToAiAssistantAction"
+                    text="Send to JetBrains AI Assistant"/>
+            <action id="AgentReview.WriteFile" class="dev.gipo.agentreview.actions.WriteReviewFileAction"
+                    text="Write Review File" description="Write the review Markdown to the configured file" icon="AllIcons.Actions.MenuSaveall"/>
+            <add-to-group group-id="AgentReview.DiffActions" anchor="last"/>
+        </group>
+
+        <action id="AgentReview.ReviewCommit" class="dev.gipo.agentreview.actions.ReviewCommitAction"
+                text="Review Commit with Agent Review" icon="AllIcons.Actions.PreviewDetails">
+            <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
+        </action>
+        <action id="AgentReview.ReviewUncommitted" class="dev.gipo.agentreview.actions.ReviewUncommittedAction"
+                text="Review Uncommitted Changes with Agent Review" icon="AllIcons.Actions.PreviewDetails">
+            <add-to-group group-id="ChangesViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="Git.Menu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

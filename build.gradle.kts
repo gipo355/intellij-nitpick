@@ -18,6 +18,11 @@ dependencies {
         bundledPlugin("Git4Idea")
         bundledPlugin("org.jetbrains.plugins.terminal")
         bundledPlugin("com.intellij.mcpServer")
+        bundledModule("intellij.platform.vcs.impl")
+        bundledModule("intellij.platform.vcs.impl.shared")
+        bundledModule("intellij.platform.vcs.dvcs")
+        bundledModule("intellij.platform.vcs.dvcs.impl")
+        bundledModule("intellij.platform.vcs.log")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
     testImplementation("junit:junit:4.13.2")

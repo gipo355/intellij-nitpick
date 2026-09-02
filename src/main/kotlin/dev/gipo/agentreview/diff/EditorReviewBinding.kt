@@ -1,0 +1,148 @@
+package dev.gipo.agentreview.diff
+
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.editor.Inlay
+import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
+import com.intellij.openapi.editor.markup.EffectType
+import com.intellij.openapi.editor.markup.GutterIconRenderer
+import com.intellij.openapi.editor.markup.HighlighterLayer
+import com.intellij.openapi.editor.markup.HighlighterTargetArea
+import com.intellij.openapi.editor.markup.RangeHighlighter
+import com.intellij.openapi.editor.markup.TextAttributes
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.Key
+import com.intellij.ui.JBColor
+import dev.gipo.agentreview.model.Comment
+import dev.gipo.agentreview.model.ReviewSession
+import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.store.ReviewListener
+import dev.gipo.agentreview.store.ReviewStore
+import javax.swing.Icon
+
+/** Maps a comment's (side, 1-based line) to a 0-based editor line and back. */
+interface LineMapper {
+    fun toEditor(side: Side, line: Int): Int?
+    fun fromEditor(editorLine: Int): kotlin.Pair<Side, Int>?
+}
+
+/** Identity mapper for a two-side or one-side editor bound to a single [Side]. */
+class SingleSideMapper(private val side: Side) : LineMapper {
+    override fun toEditor(side: Side, line: Int): Int? = if (side == this.side) line - 1 else null
+    override fun fromEditor(editorLine: Int): kotlin.Pair<Side, Int> = side to editorLine + 1
+}
+
+/** One per diff editor. Renders comments and handles creation. */
+class EditorReviewBinding(
+    val project: Project,
+    val editor: EditorEx,
+    val path: String,
+    val mapper: LineMapper,
+    val primarySide: Side,
+    parent: Disposable,
+) : Disposable {
+
+    private val store = ReviewStore.getInstance(project)
+    private val inlays = mutableListOf<Inlay<*>>()
+    private val highlighters = mutableListOf<RangeHighlighter>()
+
+    init {
+        editor.putUserData(KEY, this)
+        Disposer.register(parent, this)
+        project.messageBus.connect(this).subscribe(ReviewListener.TOPIC, object : ReviewListener {
+            override fun sessionChanged(session: ReviewSession) = render(session)
+        })
+        render(store.session)
+    }
+
+    fun render(session: ReviewSession = store.session) {
+        if (editor.isDisposed) return
+        clear()
+        val comments = session.commentsFor(path).filter { it.startLine != null }
+        for (c in comments) {
+            val start = mapper.toEditor(c.side, c.startLine!!) ?: continue
+            val end = mapper.toEditor(c.side, c.endLine ?: c.startLine!!) ?: start
+            val doc = editor.document
+            if (start >= doc.lineCount) continue
+            val endClamped = end.coerceIn(start, doc.lineCount - 1)
+            highlight(start, endClamped, c)
+            val offset = doc.getLineEndOffset(endClamped)
+            val panel = CommentInlayPanel(project, c) { rerender() }
+            val props = EditorEmbeddedComponentManager.Properties(
+                EditorEmbeddedComponentManager.ResizePolicy.none(), null, true, false, 0, offset,
+            )
+            EditorEmbeddedComponentManager.getInstance().addComponent(editor, panel, props)?.let { inlays += it }
+        }
+    }
+
+    private fun rerender() = render()
+
+    private fun highlight(start: Int, end: Int, c: Comment) {
+        val doc = editor.document
+        val attrs = TextAttributes().apply {
+            backgroundColor = if (c.resolved) RESOLVED_BG else COMMENT_BG
+            effectType = EffectType.BOXED
+        }
+        val h = editor.markupModel.addRangeHighlighter(
+            doc.getLineStartOffset(start), doc.getLineEndOffset(end),
+            HighlighterLayer.SELECTION - 1, attrs, HighlighterTargetArea.LINES_IN_RANGE,
+        )
+        h.gutterIconRenderer = CommentGutterIcon(c)
+        highlighters += h
+    }
+
+    private fun clear() {
+        inlays.forEach { Disposer.dispose(it) }
+        inlays.clear()
+        highlighters.forEach { editor.markupModel.removeHighlighter(it) }
+        highlighters.clear()
+    }
+
+    /** Caret line (or selection) as comment coordinates. */
+    fun selectionRange(): Triple<Side, Int, Int>? {
+        val sel = editor.selectionModel
+        val doc = editor.document
+        val startLine: Int
+        val endLine: Int
+        if (sel.hasSelection()) {
+            startLine = doc.getLineNumber(sel.selectionStart)
+            val endOffset = sel.selectionEnd
+            val rawEnd = doc.getLineNumber(endOffset)
+            endLine = if (rawEnd > startLine && doc.getLineStartOffset(rawEnd) == endOffset) rawEnd - 1 else rawEnd
+        } else {
+            startLine = editor.caretModel.logicalPosition.line
+            endLine = startLine
+        }
+        val (side, s) = mapper.fromEditor(startLine) ?: return null
+        val (_, e) = mapper.fromEditor(endLine) ?: return null
+        return Triple(side, s, e)
+    }
+
+    fun selectedText(): String {
+        val sel = editor.selectionModel
+        if (sel.hasSelection()) return sel.selectedText ?: ""
+        val doc = editor.document
+        val line = editor.caretModel.logicalPosition.line
+        return doc.getText(com.intellij.openapi.util.TextRange(doc.getLineStartOffset(line), doc.getLineEndOffset(line)))
+    }
+
+    override fun dispose() {
+        clear()
+        editor.putUserData(KEY, null)
+    }
+
+    private class CommentGutterIcon(private val comment: Comment) : GutterIconRenderer() {
+        override fun getIcon(): Icon = if (comment.resolved) AllIcons.RunConfigurations.TestPassed else AllIcons.Toolwindows.ToolWindowMessages
+        override fun getTooltipText(): String = comment.text
+        override fun equals(other: Any?): Boolean = other is CommentGutterIcon && other.comment.id == comment.id
+        override fun hashCode(): Int = comment.id.hashCode()
+    }
+
+    companion object {
+        val KEY: Key<EditorReviewBinding> = Key.create("AgentReview.EditorBinding")
+        private val COMMENT_BG = JBColor(0xFFF4D6, 0x4A4429)
+        private val RESOLVED_BG = JBColor(0xE6F4E6, 0x2F3F2F)
+    }
+}
