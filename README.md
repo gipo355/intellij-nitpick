@@ -105,6 +105,10 @@ auto-mark reviewed when a diff is closed.
 The session lives in `.idea/workspace.xml` (per user, not committed). *Clear
 Session* wipes it.
 
+## Contributing
+
+See `CONTRIBUTING.md` for building, installing locally, and releasing.
+
 ## Development
 
 ```bash
