@@ -1,12 +1,27 @@
 # Nitpick — IntelliJ plugin
 
-Review changes written by AI agents inside IntelliJ's diff viewer. Leave inline
-comments, mark files reviewed, then hand the review to any coding agent:
-Claude Code, Codex, OpenCode, Pi, GitHub Copilot Chat, JetBrains AI Assistant,
-or anything that speaks MCP.
+Coding agents write a lot of code, fast. Reading it is now the job. `git diff`
+in a terminal was never built for that: no place to leave a note, no memory of
+what you already looked at, and no way to get your objections back into the
+agent's context except retyping them.
 
-Inspired by [tuicr](https://tuicr.dev), [hunk](https://github.com/modem-dev/hunk)
-and Bitbucket Integration Pro, but built on IntelliJ's own diff engine.
+Nitpick turns IntelliJ's diff viewer into a review desk for agent output.
+Comment a line the way you would on a pull request, mark files as reviewed,
+and let the agent pick the review up: paste it into its terminal, drop it in a
+file, or let it pull comments live over MCP and resolve them one by one while
+you watch the cards turn green.
+
+It is the IDE-native answer to [tuicr](https://tuicr.dev) and
+[hunk](https://github.com/modem-dev/hunk). Same idea, same Markdown hand-off
+format, but with IntelliJ's diff engine, syntax highlighting, navigation and
+Git integration underneath instead of a TUI. Works with Claude Code, Codex,
+OpenCode, Pi, GitHub Copilot Chat, JetBrains AI Assistant, and anything else
+that speaks MCP.
+
+Why review at all when the agent could just be trusted? Because reviewed code
+is code you understand. Nitpick keeps that loop short: agent writes, you read
+and annotate in the place you already read code, agent fixes, only the files
+that changed again come back to you.
 
 ## Install
 

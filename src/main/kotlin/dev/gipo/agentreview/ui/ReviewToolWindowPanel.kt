@@ -28,7 +28,7 @@ import com.intellij.openapi.vcs.changes.ChangeViewDiffRequestProcessor
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.ChangesTreeDiffPreviewHandler
 import com.intellij.openapi.vcs.changes.ui.ChangeNodeDecorator
-import com.intellij.openapi.vcs.changes.ui.DefaultChangesTreeDiffPreviewHandler
+import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
 import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
 import com.intellij.openapi.vcs.changes.ui.SimpleChangesBrowser
@@ -371,8 +371,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         var passNext = false
         private var cached: List<ChangeViewDiffRequestProcessor.Wrapper> = emptyList()
 
+        private fun wrap(data: VcsTreeModelData): List<ChangeViewDiffRequestProcessor.Wrapper> =
+            data.iterateUserObjects(Change::class.java).map { ChangeViewDiffRequestProcessor.ChangeWrapper(it) }.toList()
+
         override fun iterateSelectedChanges(tree: ChangesTree): Iterable<ChangeViewDiffRequestProcessor.Wrapper> {
-            val current = DefaultChangesTreeDiffPreviewHandler.iterateSelectedChanges(tree).toList()
+            val current = wrap(VcsTreeModelData.selected(tree))
             if (AgentReviewSettings.getInstance().state.openDiffOnSingleClick) {
                 cached = current
             } else if (passNext && current.isNotEmpty()) {
@@ -383,10 +386,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
 
         override fun iterateAllChanges(tree: ChangesTree): Iterable<ChangeViewDiffRequestProcessor.Wrapper> =
-            DefaultChangesTreeDiffPreviewHandler.iterateAllChanges(tree)
+            wrap(VcsTreeModelData.all(tree))
 
-        override fun selectChange(tree: ChangesTree, change: ChangeViewDiffRequestProcessor.Wrapper) =
-            DefaultChangesTreeDiffPreviewHandler.selectChange(tree, change)
+        override fun selectChange(tree: ChangesTree, change: ChangeViewDiffRequestProcessor.Wrapper) {
+            (change.userObject as? Change)?.let { tree.setSelectedChanges(listOf(it)) }
+        }
     }
 
     private inner class ReviewDecorator : ChangeNodeDecorator {
