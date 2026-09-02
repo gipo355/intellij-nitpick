@@ -187,3 +187,7 @@ use *Write Review File*.
 
 See `CONTRIBUTING.md` for building, installing locally, and releasing.
 Design: `docs/superpowers/specs/2026-09-02-agent-review-design.md`.
+
+## License
+
+MIT. See `LICENSE`.
