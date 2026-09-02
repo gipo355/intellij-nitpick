@@ -93,12 +93,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 "Agent Review" + (wrapper?.presentableName?.let { ": $it" } ?: "")
 
             override fun handleDoubleClick(e: MouseEvent): Boolean {
-                handler.passNext = true
+                syncPreviewToSelection(handler)
                 return super.handleDoubleClick(e)
             }
 
             override fun handleEnterKey(): Boolean {
-                handler.passNext = true
+                syncPreviewToSelection(handler)
                 return super.handleEnterKey()
             }
 
@@ -124,7 +124,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         model.diffOpener = { rc ->
             browser.viewer.setSelectedChanges(listOf(rc.change))
-            handler.passNext = true
+            syncPreviewToSelection(handler)
             preview.performDiffAction()
         }
         project.messageBus.connect(this).subscribe(AdvancedSettingsChangeListener.TOPIC, object : AdvancedSettingsChangeListener {
@@ -330,6 +330,19 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     }
 
     /**
+     * An open preview only updates from tree selection events. Re-fire the selection with the
+     * gate open so this explicit open lands even when single-click following is off.
+     */
+    private fun syncPreviewToSelection(handler: GatedPreviewHandler) {
+        val selected = browser.selectedChanges
+        if (selected.isEmpty()) return
+        handler.passNext = false
+        browser.viewer.selectionModel.clearSelection()
+        handler.passNext = true
+        browser.viewer.setSelectedChanges(selected)
+    }
+
+    /**
      * Follows tree selection only when "open diff on single click" is on, or for one explicit
      * open (double-click, Enter, navigation). Otherwise the preview keeps showing what it shows.
      */
@@ -339,9 +352,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         private var cached: List<ChangeViewDiffRequestProcessor.Wrapper> = emptyList()
 
         override fun iterateSelectedChanges(tree: ChangesTree): Iterable<ChangeViewDiffRequestProcessor.Wrapper> {
-            if (AgentReviewSettings.getInstance().state.openDiffOnSingleClick || passNext) {
+            val current = DefaultChangesTreeDiffPreviewHandler.iterateSelectedChanges(tree).toList()
+            if (AgentReviewSettings.getInstance().state.openDiffOnSingleClick) {
+                cached = current
+            } else if (passNext && current.isNotEmpty()) {
                 passNext = false
-                cached = DefaultChangesTreeDiffPreviewHandler.iterateSelectedChanges(tree).toList()
+                cached = current
             }
             return cached
         }
