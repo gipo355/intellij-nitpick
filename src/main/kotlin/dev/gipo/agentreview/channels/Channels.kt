@@ -1,6 +1,5 @@
 package dev.gipo.agentreview.channels
 
-import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -8,7 +7,6 @@ import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -83,12 +81,13 @@ object FileChannel {
 /** GitHub Copilot Chat via its public CopilotChatService, resolved reflectively. */
 object CopilotChannel {
     private val LOG = logger<CopilotChannel>()
-    private const val PLUGIN_ID = "com.github.copilot"
+    /** An action registered by the Copilot plugin; its class loader reaches the plugin's classes. */
+    private const val ANCHOR_ACTION = "copilot.chat.show"
 
-    fun isAvailable(): Boolean = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID)) != null
+    fun isAvailable(): Boolean = ActionManager.getInstance().getAction(ANCHOR_ACTION) != null
 
     fun send(project: Project, text: String, dataContext: DataContext): Boolean {
-        val loader = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID))?.pluginClassLoader ?: return false
+        val loader = ActionManager.getInstance().getAction(ANCHOR_ACTION)?.javaClass?.classLoader ?: return false
         return try {
             val serviceClass = Class.forName("com.github.copilot.api.CopilotChatService", true, loader)
             val service = project.getService(serviceClass) ?: return false
@@ -112,16 +111,14 @@ object CopilotChannel {
 /** JetBrains AI Assistant: open the chat and pre-fill its input (internal API, best effort). */
 object AiAssistantChannel {
     private val LOG = logger<AiAssistantChannel>()
-    private const val PLUGIN_ID = "com.intellij.ml.llm"
+    private const val SHOW_CHAT_ACTION = "AIAssistant.ToolWindow.ShowOrFocus"
 
-    fun isAvailable(): Boolean = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID)) != null
+    fun isAvailable(): Boolean = ActionManager.getInstance().getAction(SHOW_CHAT_ACTION) != null
 
     fun send(project: Project, text: String, dataContext: DataContext): Boolean {
-        val action = ActionManager.getInstance().getAction("AIAssistant.ToolWindow.ShowOrFocus")
-        if (action != null) {
-            ActionManager.getInstance().tryToExecute(action, null, null, ActionPlaces.UNKNOWN, true)
-        }
-        val loader = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID))?.pluginClassLoader ?: return false
+        val action = ActionManager.getInstance().getAction(SHOW_CHAT_ACTION) ?: return false
+        ActionManager.getInstance().tryToExecute(action, null, null, ActionPlaces.UNKNOWN, true)
+        val loader = action.javaClass.classLoader
         return try {
             val facadeClass = Class.forName("com.intellij.ml.llm.core.AIAContentFacade", true, loader)
             val companion = facadeClass.getField("Companion").get(null)
