@@ -1,4 +1,4 @@
-<idea-plugin package="dev.gipo.agentreview">
+<idea-plugin package="dev.gipo.agentreview" require-restart="true">
     <id>dev.gipo.agentreview</id>
     <name>Agent Review</name>
     <vendor email="gipo18649ah@gmail.com" url="https://github.com/gipo355/intellij-diff-reviewer">gipo355</vendor>
