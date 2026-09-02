@@ -46,5 +46,22 @@ class DiffBindingTest : BasePlatformTestCase() {
         store.clear()
         UIUtil.dispatchAllInvocationEvents()
         assertEquals(0, editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength).size)
+
+        // Writes from a background thread (MCP calls) must not touch the editor off EDT.
+        val failure = java.util.concurrent.atomic.AtomicReference<Throwable>()
+        val worker = Thread {
+            try {
+                store.addComment(Comment(path = newSide.path, side = Side.NEW, startLine = 3, endLine = 3, text = "from agent"))
+            } catch (t: Throwable) {
+                failure.set(t)
+            }
+        }
+        worker.start()
+        worker.join()
+        assertNull(failure.get()?.toString(), failure.get())
+        UIUtil.dispatchAllInvocationEvents()
+        assertEquals("inlay rendered after EDT dispatch", 1, editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength).size)
+        store.clear()
+        UIUtil.dispatchAllInvocationEvents()
     }
 }

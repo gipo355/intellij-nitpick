@@ -1,0 +1,10 @@
+<idea-plugin package="dev.gipo.agentreview.terminal">
+    <dependencies>
+        <plugin id="org.jetbrains.plugins.terminal"/>
+        <module name="intellij.terminal.frontend"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceInterface="dev.gipo.agentreview.channels.TerminalChannel"
+                        serviceImplementation="dev.gipo.agentreview.terminal.TerminalChannelImpl"/>
+    </extensions>
+</idea-plugin>

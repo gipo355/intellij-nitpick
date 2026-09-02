@@ -1,6 +1,6 @@
 package dev.gipo.agentreview.channels
 
-import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -85,10 +85,10 @@ object CopilotChannel {
     private val LOG = logger<CopilotChannel>()
     private const val PLUGIN_ID = "com.github.copilot"
 
-    fun isAvailable(): Boolean = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.isEnabled == true
+    fun isAvailable(): Boolean = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID)) != null
 
     fun send(project: Project, text: String, dataContext: DataContext): Boolean {
-        val loader = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.pluginClassLoader ?: return false
+        val loader = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID))?.pluginClassLoader ?: return false
         return try {
             val serviceClass = Class.forName("com.github.copilot.api.CopilotChatService", true, loader)
             val service = project.getService(serviceClass) ?: return false
@@ -114,14 +114,14 @@ object AiAssistantChannel {
     private val LOG = logger<AiAssistantChannel>()
     private const val PLUGIN_ID = "com.intellij.ml.llm"
 
-    fun isAvailable(): Boolean = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.isEnabled == true
+    fun isAvailable(): Boolean = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID)) != null
 
     fun send(project: Project, text: String, dataContext: DataContext): Boolean {
         val action = ActionManager.getInstance().getAction("AIAssistant.ToolWindow.ShowOrFocus")
         if (action != null) {
             ActionManager.getInstance().tryToExecute(action, null, null, ActionPlaces.UNKNOWN, true)
         }
-        val loader = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.pluginClassLoader ?: return false
+        val loader = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID))?.pluginClassLoader ?: return false
         return try {
             val facadeClass = Class.forName("com.intellij.ml.llm.core.AIAContentFacade", true, loader)
             val companion = facadeClass.getField("Companion").get(null)

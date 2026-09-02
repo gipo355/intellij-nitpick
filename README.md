@@ -10,14 +10,17 @@ and Bitbucket Integration Pro, but built on IntelliJ's own diff engine.
 
 ## Install
 
+From JetBrains Marketplace: Settings | Plugins | Marketplace, search
+"Agent Review".
+
+From source:
+
 ```bash
-./gradlew buildPlugin        # build/distributions/agent-review-0.1.0.zip
-./gradlew runIde             # sandbox IDE with the plugin
+./gradlew buildPlugin        # build/distributions/agent-review-<version>.zip
 ```
 
-Settings | Plugins | ⚙ | Install Plugin from Disk… → the zip.
-Requires IntelliJ 2026.2+ (build 262). `gradle.properties` points at the local
-IDE used for compilation; override with `-PideaHome=/path`.
+Settings | Plugins | ⚙ | Install Plugin from Disk… → the zip, restart.
+Requires IntelliJ 2026.2+ (build 262).
 
 ## Workflow
 

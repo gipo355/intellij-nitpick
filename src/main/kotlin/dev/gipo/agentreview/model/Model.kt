@@ -88,7 +88,8 @@ data class ReviewSession(
 
     fun reviewState(path: String, currentHash: String?): ReviewState {
         val stored = reviewed[path] ?: return ReviewState.UNREVIEWED
-        return if (currentHash == null || stored == currentHash) ReviewState.REVIEWED else ReviewState.STALE
+        if (stored.isEmpty() || currentHash == null || stored == currentHash) return ReviewState.REVIEWED
+        return ReviewState.STALE
     }
 }
 

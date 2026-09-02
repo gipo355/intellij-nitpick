@@ -88,13 +88,13 @@ class AgentReviewToolset : McpToolset {
 
     @McpTool
     @McpDescription("Files in the current review scope with their review state (reviewed, stale, unreviewed) and open comment counts.")
-    suspend fun agent_review_status(): List<FileStatus> {
+    suspend fun agent_review_status(): StatusResult {
         val project = coroutineContext.project
         val store = ReviewStore.getInstance(project)
         val model = ReviewChangesModel.getInstance(project)
-        return model.changes.map { rc ->
+        return StatusResult(model.changes.map { rc ->
             FileStatus(rc.path, model.state(rc).name.lowercase(), store.session.commentsFor(rc.path).count { !it.resolved })
-        }
+        })
     }
 
     @Serializable
@@ -105,4 +105,7 @@ class AgentReviewToolset : McpToolset {
 
     @Serializable
     data class FileStatus(val path: String, val state: String, val open_comments: Int)
+
+    @Serializable
+    data class StatusResult(val files: List<FileStatus>)
 }

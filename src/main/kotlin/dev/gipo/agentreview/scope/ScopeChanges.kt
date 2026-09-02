@@ -12,20 +12,22 @@ import com.intellij.vcsUtil.VcsUtil
 import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
+import git4idea.GitContentRevision
+import git4idea.GitRevisionNumber
 import git4idea.changes.GitChangeUtils
 import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepositoryManager
 
 /** Resolves a [Scope] to the list of changes to review. Runs git, call off the EDT. */
 object ScopeChanges {
+    private const val INDEX_REV = ":0"
 
     fun collect(project: Project, scope: Scope): List<Change> {
         val repos = GitRepositoryManager.getInstance(project).repositories
         return when (scope.kind) {
             ScopeKind.UNCOMMITTED -> uncommitted(project)
             ScopeKind.STAGED -> repos.flatMap { repo ->
-                val paths = GitChangeUtils.getStagedChanges(project, repo.root).map { it.filePath }
-                indexVsHead(project, repo.root, paths)
+                GitChangeUtils.getStagedChanges(project, repo.root).map { stagedChange(project, it) }
             }
             ScopeKind.UNSTAGED -> repos.flatMap { repo ->
                 val paths = GitChangeUtils.getUnstagedChanges(project, repo.root, null, true).map { it.filePath }
@@ -41,9 +43,12 @@ object ScopeChanges {
         }.sortedBy { ChangesUtil.getFilePath(it).path }
     }
 
-    private fun indexVsHead(project: Project, root: VirtualFile, paths: List<FilePath>): Collection<Change> {
-        if (paths.isEmpty()) return emptyList()
-        return GitChangeUtils.getDiffWithWorkingDir(project, root, "HEAD", paths, false, true)
+    /** HEAD vs index, so later unstaged edits do not leak in. */
+    private fun stagedChange(project: Project, c: GitChangeUtils.GitDiffChange): Change {
+        val before = c.beforePath?.let { GitContentRevision.createRevision(it, GitRevisionNumber.HEAD, project) }
+        // ":0" makes git4idea run `git cat-file :0:<path>`, the stage-0 index entry.
+        val after = c.afterPath?.let { GitContentRevision.createRevision(it, GitRevisionNumber(INDEX_REV), project) }
+        return Change(before, after)
     }
 
     private fun uncommitted(project: Project): List<Change> {

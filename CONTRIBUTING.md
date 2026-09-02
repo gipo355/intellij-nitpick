@@ -36,21 +36,27 @@ Repeat the same steps with a new zip to update. Uninstall from the Installed tab
 ## Release to JetBrains Marketplace
 
 1. Create a vendor account at https://plugins.jetbrains.com and generate a
-   token under your profile (Tokens).
-2. First upload is manual: Upload plugin → the zip. JetBrains reviews it once.
-3. Later releases go through Gradle. Add to `build.gradle.kts`:
-   ```kotlin
-   intellijPlatform {
-       publishing { token = providers.environmentVariable("JB_PUBLISH_TOKEN") }
-   }
-   ```
-   then
+   token under your profile (My Tokens).
+2. The first version must be uploaded manually: Upload plugin → the zip from
+   `./gradlew buildPlugin`. The plugin id `dev.gipo.agentreview` from
+   `plugin.xml` becomes the Marketplace id. JetBrains reviews the first upload,
+   usually within two business days.
+3. Every later version goes through Gradle with the token:
    ```bash
-   JB_PUBLISH_TOKEN=... ./gradlew publishPlugin
+   export PUBLISH_TOKEN=...
+   ./gradlew publishPlugin
    ```
-4. Before submitting: bump `version` in `build.gradle.kts`, add `<change-notes>`
-   to `plugin.xml`, add a 40x40 `pluginIcon.svg` under `src/main/resources/META-INF`,
-   and run `./gradlew verifyPlugin`.
+   `build.gradle.kts` already reads `PUBLISH_TOKEN`. Nothing else about your
+   account is needed: Marketplace matches the upload by plugin id and rejects a
+   version that already exists.
+4. Release checklist: bump `version` in `build.gradle.kts`, update
+   `<change-notes>` in `plugin.xml`, then
+   ```bash
+   ./gradlew test verifyPlugin buildPlugin
+   ```
+   The verifier runs against the local IDE from `ideaHome`. Fix every
+   "compatibility problem" it reports; warnings about internal API usage are
+   expected for the AI Assistant channel.
 
 `untilBuild` is unset, so Marketplace treats the plugin as compatible with all
 future builds. The AI Assistant channel uses an internal API and is the most

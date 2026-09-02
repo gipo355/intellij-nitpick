@@ -10,7 +10,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.util.concurrency.AppExecutorUtil
 import dev.gipo.agentreview.scope.ScopeChanges
@@ -165,6 +165,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(ActionManager.getInstance().getAction("AgentReview.WriteFile"))
             add(ActionManager.getInstance().getAction("AgentReview.SendGroup"))
             add(Separator.getInstance())
+            add(object : AnAction("Clear Resolved Comments", "Delete comments the agent already resolved", AllIcons.Actions.Cancel), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = store.update { s -> s.copy(comments = s.comments.filterNot { it.resolved }) }
+            })
             add(object : AnAction("Clear Session", "Delete all comments and reviewed marks", AllIcons.Actions.GC), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
                     val ok = Messages.showYesNoDialog(project, "Delete all comments and reviewed marks?", "Clear Review Session", null)
@@ -288,26 +291,24 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
 
         private fun chooseBranch(e: AnActionEvent) {
-            ReadAction.nonBlocking<List<String>> { ScopeChanges.branchNames(project) }
-                .finishOnUiThread(ModalityState.defaultModalityState()) { names ->
+            val component = e.inputEvent?.component ?: this@ReviewToolWindowPanel
+            runInBackground({ ScopeChanges.branchNames(project) }) { names ->
                     if (names.isEmpty()) {
                         Notifications.warn(project, "No branches found", "Is this a git repository?")
-                        return@finishOnUiThread
+                        return@runInBackground
                     }
                     JBPopupFactory.getInstance().createPopupChooserBuilder(names)
                         .setTitle("Review Changes Since Branch")
                         .setNamerForFiltering { it }
                         .setItemChosenCallback { setMergeBaseScope(it, "HEAD") }
                         .createPopup()
-                        .showInBestPositionFor(e.dataContext)
+                        .showUnderneathOf(component)
                 }
-                .submit(AppExecutorUtil.getAppExecutorService())
         }
 
         /** base = merge-base(ref, head), like a pull request diff. */
         private fun setMergeBaseScope(ref: String, head: String) {
-            ReadAction.nonBlocking<String?> { ScopeChanges.mergeBase(project, ref) }
-                .finishOnUiThread(ModalityState.defaultModalityState()) { mb ->
+            runInBackground({ ScopeChanges.mergeBase(project, ref) }) { mb ->
                     if (mb == null) {
                         Notifications.warn(project, "Cannot resolve merge-base", "git merge-base $ref $head failed. Using $ref directly.")
                         setScope(Scope(ScopeKind.RANGE, base = ref, head = head))
@@ -315,7 +316,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                         setScope(Scope(ScopeKind.RANGE, base = mb, head = head, baseLabel = "merge-base($ref)"))
                     }
                 }
-                .submit(AppExecutorUtil.getAppExecutorService())
+        }
+
+        private fun <T> runInBackground(compute: () -> T, onDone: (T) -> Unit) {
+            AppExecutorUtil.getAppExecutorService().execute {
+                val result = compute()
+                ApplicationManager.getApplication().invokeLater({ onDone(result) }, ModalityState.defaultModalityState(), project.disposed)
+            }
         }
     }
 }

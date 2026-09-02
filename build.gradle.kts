@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "dev.gipo.agentreview"
-version = "0.1.0"
+version = "0.2.0"
 
 repositories {
     mavenCentral()
@@ -18,6 +18,7 @@ dependencies {
         bundledPlugin("Git4Idea")
         bundledPlugin("org.jetbrains.plugins.terminal")
         bundledPlugin("com.intellij.mcpServer")
+        bundledModule("intellij.terminal.frontend")
         bundledModule("intellij.platform.vcs.impl")
         bundledModule("intellij.platform.vcs.impl.shared")
         bundledModule("intellij.platform.vcs.dvcs")
@@ -40,4 +41,11 @@ intellijPlatform {
         }
     }
     buildSearchableOptions = false
+    publishing {
+        // Marketplace token for updates after the first manual upload: export PUBLISH_TOKEN=...
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+    }
+    pluginVerification {
+        ides { local(providers.gradleProperty("ideaHome").map { file(it) }) }
+    }
 }

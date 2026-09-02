@@ -1,5 +1,6 @@
 package dev.gipo.agentreview.store
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
@@ -45,10 +46,15 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
         }
     }
 
-    @Synchronized
     fun update(transform: (ReviewSession) -> ReviewSession) {
-        session = transform(session)
-        project.messageBus.syncPublisher(ReviewListener.TOPIC).sessionChanged(session)
+        val updated = synchronized(this) { transform(session).also { session = it } }
+        val app = ApplicationManager.getApplication()
+        // Listeners touch editors and Swing; MCP calls arrive on a coroutine thread.
+        if (app.isDispatchThread) publish(updated) else app.invokeLater({ publish(updated) }, project.disposed)
+    }
+
+    private fun publish(updated: ReviewSession) {
+        if (!project.isDisposed) project.messageBus.syncPublisher(ReviewListener.TOPIC).sessionChanged(updated)
     }
 
     fun addComment(comment: Comment) = update { it.copy(comments = it.comments + comment) }

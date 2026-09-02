@@ -43,8 +43,14 @@ class ReviewChangesModel(private val project: Project) : Disposable {
     @Volatile
     private var refreshing = false
 
+    @Volatile
+    private var refreshPending = false
+
     fun refresh() {
-        if (refreshing) return
+        if (refreshing) {
+            refreshPending = true
+            return
+        }
         refreshing = true
         val scope = ReviewStore.getInstance(project).session.scope
         object : Task.Backgroundable(project, "Collecting changes for review", false) {
@@ -65,6 +71,10 @@ class ReviewChangesModel(private val project: Project) : Disposable {
 
             override fun onFinished() {
                 refreshing = false
+                if (refreshPending) {
+                    refreshPending = false
+                    refresh()
+                }
             }
         }.queue()
     }

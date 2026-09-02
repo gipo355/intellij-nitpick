@@ -90,15 +90,17 @@ class ToggleReviewedAction : DiffReviewAction() {
 
     companion object {
         /** Returns the new state. Hash comes from the model, else from the NEW editor document. */
-        fun toggleReviewed(project: Project, path: String, binding: EditorReviewBinding?): ReviewState {
+        fun toggleReviewed(project: Project, path: String, binding: EditorReviewBinding?, fallbackHash: (() -> String?)? = null): ReviewState {
             val store = ReviewStore.getInstance(project)
             val model = ReviewChangesModel.getInstance(project)
-            val rc = model.find(path)
-            val hash = rc?.hash ?: binding?.takeIf { it.primarySide == Side.NEW }?.let { ContentHash.of(it.editor.document.charsSequence) }
+            val hash = model.find(path)?.hash
+                ?: binding?.takeIf { it.primarySide == Side.NEW }?.let { ContentHash.of(it.editor.document.charsSequence) }
+                ?: fallbackHash?.invoke()
             val current = store.session.reviewState(path, hash)
             return if (current == ReviewState.REVIEWED) {
                 store.setReviewed(path, null); ReviewState.UNREVIEWED
             } else {
+                // Unknown hash is stored as "": reviewed until a real hash disagrees only if it was never known.
                 store.setReviewed(path, hash ?: ""); ReviewState.REVIEWED
             }
         }

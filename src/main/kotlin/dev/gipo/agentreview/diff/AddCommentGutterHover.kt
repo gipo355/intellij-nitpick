@@ -2,24 +2,21 @@ package dev.gipo.agentreview.diff
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.editor.event.EditorMouseEventArea
 import com.intellij.openapi.editor.event.EditorMouseListener
 import com.intellij.openapi.editor.event.EditorMouseMotionListener
 import com.intellij.openapi.editor.ex.EditorEx
-import com.intellij.openapi.editor.ex.EditorGutterFreePainterAreaState
-import com.intellij.openapi.editor.markup.ActiveGutterRenderer
+import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
-import com.intellij.openapi.editor.markup.LineMarkerRendererEx
 import com.intellij.openapi.editor.markup.RangeHighlighter
-import com.intellij.util.ui.JBUI
-import java.awt.Graphics
-import java.awt.Rectangle
-import java.awt.event.MouseEvent
+import com.intellij.openapi.util.Disposer
+import javax.swing.Icon
 
-/** GitHub-style "+" in the gutter of the hovered line. Click = add comment there. */
+/** GitHub-style "+" gutter icon on the hovered line. Click = add comment there. */
 class AddCommentGutterHover(
     private val editor: EditorEx,
     parent: Disposable,
@@ -30,9 +27,7 @@ class AddCommentGutterHover(
     private var hoveredLine = -1
 
     init {
-        com.intellij.openapi.util.Disposer.register(parent, this)
-        editor.gutterComponentEx.setLeftFreePaintersAreaState(EditorGutterFreePainterAreaState.SHOW)
-        editor.gutterComponentEx.reserveLeftFreePaintersAreaWidth(this, ICON_WIDTH)
+        Disposer.register(parent, this)
         editor.addEditorMouseMotionListener(object : EditorMouseMotionListener {
             override fun mouseMoved(e: EditorMouseEvent) {
                 val line = if (e.area == EditorMouseEventArea.EDITING_AREA || isGutter(e.area)) e.logicalPosition.line else -1
@@ -59,36 +54,24 @@ class AddCommentGutterHover(
             doc.getLineStartOffset(line), doc.getLineEndOffset(line),
             HighlighterLayer.LAST, null, HighlighterTargetArea.LINES_IN_RANGE,
         )
-        h.lineMarkerRenderer = Renderer(line)
+        h.gutterIconRenderer = PlusIcon(line)
         highlighter = h
     }
 
-    private inner class Renderer(private val line: Int) : LineMarkerRendererEx, ActiveGutterRenderer {
-        override fun getPosition(): LineMarkerRendererEx.Position = LineMarkerRendererEx.Position.LEFT
-
-        override fun paint(editor: Editor, g: Graphics, r: Rectangle) {
-            val icon = AllIcons.General.InlineAdd
-            val x = r.x + (r.width - icon.iconWidth) / 2
-            val y = r.y + (r.height - icon.iconHeight) / 2
-            icon.paintIcon(editor.component, g, x, y)
-        }
-
+    private inner class PlusIcon(private val line: Int) : GutterIconRenderer() {
+        override fun getIcon(): Icon = AllIcons.General.InlineAdd
         override fun getTooltipText(): String = "Add review comment"
-        override fun canDoAction(editor: Editor, e: MouseEvent): Boolean = true
-        override fun doAction(editor: Editor, e: MouseEvent) {
-            e.consume()
-            onClick(line)
+        override fun isNavigateAction(): Boolean = true
+        override fun getClickAction(): AnAction = object : AnAction() {
+            override fun actionPerformed(e: AnActionEvent) = onClick(line)
         }
 
-        override fun calcBounds(editor: Editor, lineNum: Int, preferredBounds: Rectangle): Rectangle = preferredBounds
+        override fun equals(other: Any?): Boolean = other is PlusIcon && other.line == line
+        override fun hashCode(): Int = line
     }
 
     override fun dispose() {
         highlighter?.let { if (!editor.isDisposed) editor.markupModel.removeHighlighter(it) }
         highlighter = null
-    }
-
-    companion object {
-        private val ICON_WIDTH = JBUI.scale(14)
     }
 }

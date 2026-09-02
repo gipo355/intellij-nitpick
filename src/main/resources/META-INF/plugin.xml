@@ -1,17 +1,50 @@
-<idea-plugin>
+<idea-plugin package="dev.gipo.agentreview">
     <id>dev.gipo.agentreview</id>
     <name>Agent Review</name>
-    <vendor email="gipo18649ah@gmail.com">gipo355</vendor>
+    <vendor email="gipo18649ah@gmail.com" url="https://github.com/gipo355/intellij-diff-reviewer">gipo355</vendor>
     <description><![CDATA[
-        Review agent-authored changes in IntelliJ's diff viewer: inline comments, mark files reviewed,
-        then hand the review to any coding agent (clipboard, terminal, file, Copilot, AI Assistant, MCP).
-    ]]></description>
+        <p>Review code written by AI agents inside IntelliJ's diff viewer, then hand the review back to the agent.
+        Works with Claude Code, Codex, OpenCode, Pi, GitHub Copilot Chat, JetBrains AI Assistant, and any MCP client.</p>
 
-    <depends>com.intellij.modules.platform</depends>
-    <depends>com.intellij.modules.vcs</depends>
-    <depends>Git4Idea</depends>
-    <depends optional="true" config-file="agentreview-terminal.xml">org.jetbrains.plugins.terminal</depends>
-    <depends optional="true" config-file="agentreview-mcp.xml">com.intellij.mcpServer</depends>
+        <h3>Review like a pull request, locally</h3>
+        <ul>
+            <li>Pick what to review: uncommitted, staged, unstaged, a commit, a commit range, or everything since a branch's merge-base.</li>
+            <li>Comment on a line, a selection, or a whole file. Hover a line and click <b>+</b> in the gutter, or press <b>Alt+Shift+C</b>.</li>
+            <li>Comments render inline under the code with Edit, Resolve, and Delete. Types: note, issue, question, nit, praise.</li>
+            <li>Mark files reviewed. Marks are keyed by content, so a file the agent touches again shows up as changed.</li>
+            <li>Next Unreviewed walks you through what is left.</li>
+        </ul>
+
+        <h3>Send the review to any agent</h3>
+        <ul>
+            <li><b>Clipboard</b>: tuicr-compatible Markdown with <code>path:line</code> references and code snippets.</li>
+            <li><b>Terminal</b>: paste straight into the IDE terminal tab running claude, codex, opencode, or pi.</li>
+            <li><b>File</b>: write <code>.agent-review/REVIEW.md</code> and <code>REVIEW.json</code> for the agent to read.</li>
+            <li><b>GitHub Copilot Chat</b> and <b>JetBrains AI Assistant</b>: open a chat with the review as the prompt.</li>
+            <li><b>MCP</b>: tools on IntelliJ's built-in MCP server. The agent pulls comments, resolves them with a reply, and can ask you questions back.</li>
+        </ul>
+
+        <p>Git Log integration: right-click one commit, or Ctrl+click several and review them as a range.</p>
+    ]]></description>
+    <change-notes><![CDATA[
+        <h3>0.2.0</h3>
+        <ul>
+            <li>Inline review comments in side-by-side and unified diff viewers, with gutter + on hover.</li>
+            <li>Scopes: uncommitted, staged, unstaged, commit, commit range, compare with branch (merge-base).</li>
+            <li>Git Log actions for one commit or a multi-commit range.</li>
+            <li>Reviewed marks keyed by content hash, stale detection, Next Unreviewed.</li>
+            <li>Export to clipboard, terminal (classic and reworked), file, Copilot Chat, AI Assistant.</li>
+            <li>MCP toolset: get review, list, resolve, add comment, status.</li>
+        </ul>
+    ]]></change-notes>
+
+    <dependencies>
+        <plugin id="Git4Idea"/>
+    </dependencies>
+    <content>
+        <module name="dev.gipo.agentreview.terminal"/>
+        <module name="dev.gipo.agentreview.mcp"/>
+    </content>
 
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="dev.gipo.agentreview.store.ReviewStore"/>
@@ -19,7 +52,7 @@
         <applicationConfigurable parentId="tools" instance="dev.gipo.agentreview.settings.AgentReviewConfigurable"
                                  id="dev.gipo.agentreview.settings" displayName="Agent Review"/>
 
-        <toolWindow id="Agent Review" anchor="right" icon="AllIcons.Actions.PreviewDetails" secondary="false"
+        <toolWindow id="Agent Review" anchor="right" icon="/icons/toolWindowAgentReview.svg" secondary="false"
                     factoryClass="dev.gipo.agentreview.ui.ReviewToolWindowFactory"/>
 
         <diff.DiffExtension implementation="dev.gipo.agentreview.diff.ReviewDiffExtension"/>
@@ -77,11 +110,11 @@
         </group>
 
         <action id="AgentReview.ReviewCommit" class="dev.gipo.agentreview.actions.ReviewCommitAction"
-                text="Review Commit with Agent Review" icon="AllIcons.Actions.PreviewDetails">
+                text="Review Commit with Agent Review" icon="/icons/toolWindowAgentReview.svg">
             <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
         </action>
         <action id="AgentReview.ReviewUncommitted" class="dev.gipo.agentreview.actions.ReviewUncommittedAction"
-                text="Review Uncommitted Changes with Agent Review" icon="AllIcons.Actions.PreviewDetails">
+                text="Review Uncommitted Changes with Agent Review" icon="/icons/toolWindowAgentReview.svg">
             <add-to-group group-id="ChangesViewPopupMenu" anchor="last"/>
             <add-to-group group-id="Git.Menu" anchor="last"/>
         </action>

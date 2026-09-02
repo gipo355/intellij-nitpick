@@ -8,6 +8,8 @@ import com.intellij.diff.contents.FileContent
 import com.intellij.diff.requests.ContentDiffRequest
 import com.intellij.diff.requests.DiffRequest
 import com.intellij.diff.tools.fragmented.UnifiedDiffViewer
+import com.intellij.diff.tools.util.base.DiffViewerBase
+import com.intellij.diff.tools.util.base.DiffViewerListener
 import com.intellij.diff.tools.util.side.OnesideTextDiffViewer
 import com.intellij.diff.tools.util.side.TwosideTextDiffViewer
 import com.intellij.openapi.project.Project
@@ -25,23 +27,32 @@ class ReviewDiffExtension : DiffExtension() {
         val project = context.project ?: return
         val path = resolvePath(project, request) ?: return
 
-        when (viewer) {
-            is TwosideTextDiffViewer -> {
-                EditorReviewBinding(project, viewer.editor1, path, SingleSideMapper(Side.OLD), Side.OLD, viewer)
-                EditorReviewBinding(project, viewer.editor2, path, SingleSideMapper(Side.NEW), Side.NEW, viewer)
-                installAutoReviewed(project, viewer, path) { viewer.editor2.document.charsSequence }
-            }
-            is OnesideTextDiffViewer -> {
-                EditorReviewBinding(project, viewer.editor, path, SingleSideMapper(Side.NEW), Side.NEW, viewer)
-            }
-            is UnifiedDiffViewer -> {
-                EditorReviewBinding(project, viewer.editor, path, UnifiedMapper(viewer), Side.NEW, viewer)
-                installAutoReviewed(project, viewer, path) { viewer.getContent(DiffSide.RIGHT).document.charsSequence }
-            }
+        val bindings = when (viewer) {
+            is TwosideTextDiffViewer -> listOf(
+                EditorReviewBinding(project, viewer.editor1, path, SingleSideMapper(Side.OLD), Side.OLD, viewer),
+                EditorReviewBinding(project, viewer.editor2, path, SingleSideMapper(Side.NEW), Side.NEW, viewer),
+            )
+            is OnesideTextDiffViewer -> listOf(
+                EditorReviewBinding(project, viewer.editor, path, SingleSideMapper(Side.NEW), Side.NEW, viewer),
+            )
+            is UnifiedDiffViewer -> listOf(
+                EditorReviewBinding(project, viewer.editor, path, UnifiedMapper(viewer), Side.NEW, viewer),
+            )
+            else -> return
         }
+        // The unified document and line convertors only exist after the first rediff.
+        viewer.addListener(object : DiffViewerListener() {
+            override fun onAfterRediff() = bindings.forEach { it.render() }
+        })
+        val newContent: (() -> CharSequence)? = when (viewer) {
+            is TwosideTextDiffViewer -> ({ viewer.editor2.document.charsSequence })
+            is UnifiedDiffViewer -> ({ viewer.getContent(DiffSide.RIGHT).document.charsSequence })
+            else -> null
+        }
+        if (newContent != null) installAutoReviewed(project, viewer, path, newContent)
     }
 
-    private fun installAutoReviewed(project: Project, viewer: FrameDiffTool.DiffViewer, path: String, content: () -> CharSequence) {
+    private fun installAutoReviewed(project: Project, viewer: DiffViewerBase, path: String, content: () -> CharSequence) {
         val settings = AgentReviewSettings.getInstance().state
         if (!settings.autoMarkReviewedOnClose && !settings.autoMarkReviewedOnOpen) return
         val hash = try {
