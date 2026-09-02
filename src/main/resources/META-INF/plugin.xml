@@ -1,6 +1,6 @@
 <idea-plugin package="dev.gipo.agentreview" require-restart="true">
-    <id>dev.gipo.agentreview</id>
-    <name>Agent Review</name>
+    <id>dev.gipo.nitpick</id>
+    <name>Nitpick</name>
     <vendor email="gipo18649ah@gmail.com" url="https://github.com/gipo355/intellij-diff-reviewer">gipo355</vendor>
     <description><![CDATA[
         <p>Review code written by AI agents inside IntelliJ's diff viewer, then hand the review back to the agent.
@@ -50,16 +50,16 @@
         <projectService serviceImplementation="dev.gipo.agentreview.store.ReviewStore"/>
         <applicationService serviceImplementation="dev.gipo.agentreview.settings.AgentReviewSettings"/>
         <applicationConfigurable parentId="tools" instance="dev.gipo.agentreview.settings.AgentReviewConfigurable"
-                                 id="dev.gipo.agentreview.settings" displayName="Agent Review"/>
+                                 id="dev.gipo.agentreview.settings" displayName="Nitpick"/>
 
-        <toolWindow id="Agent Review" anchor="right" icon="/icons/toolWindowAgentReview.svg" secondary="false"
+        <toolWindow id="Nitpick" anchor="right" icon="/icons/toolWindowNitpick.svg" secondary="false"
                     factoryClass="dev.gipo.agentreview.ui.ReviewToolWindowFactory"/>
 
         <diff.DiffExtension implementation="dev.gipo.agentreview.diff.ReviewDiffExtension"/>
 
         <vcs.changes.changesViewNodeAction implementation="dev.gipo.agentreview.ui.ReviewedHoverAction"/>
 
-        <notificationGroup id="Agent Review" displayType="BALLOON"/>
+        <notificationGroup id="Nitpick" displayType="BALLOON"/>
     </extensions>
 
     <actions>
@@ -115,11 +115,11 @@
         </group>
 
         <action id="AgentReview.ReviewCommit" class="dev.gipo.agentreview.actions.ReviewCommitAction"
-                text="Review Commit with Agent Review" icon="/icons/toolWindowAgentReview.svg">
+                text="Review Commit with Nitpick" icon="/icons/toolWindowNitpick.svg">
             <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
         </action>
         <action id="AgentReview.ReviewUncommitted" class="dev.gipo.agentreview.actions.ReviewUncommittedAction"
-                text="Review Uncommitted Changes with Agent Review" icon="/icons/toolWindowAgentReview.svg">
+                text="Review Uncommitted Changes with Nitpick" icon="/icons/toolWindowNitpick.svg">
             <add-to-group group-id="ChangesViewPopupMenu" anchor="last"/>
             <add-to-group group-id="Git.Menu" anchor="last"/>
         </action>

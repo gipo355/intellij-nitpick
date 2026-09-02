@@ -1,4 +1,4 @@
-# Agent Review — IntelliJ plugin design
+# Nitpick — IntelliJ plugin design
 
 Date: 2026-09-02. Status: approved by autonomy grant ("you are on your own").
 
@@ -36,7 +36,7 @@ ReviewStore (project service, persisted in workspace.xml)
    ├── ReviewSession { scope, comments[], reviewed{path→hash} }
    └── listeners (ReviewTopic on MessageBus)
         │
-        ├── Tool window "Agent Review": scope selector, changes tree with
+        ├── Tool window "Nitpick": scope selector, changes tree with
         │   reviewed/comment decorations, comment list, export toolbar
         ├── DiffExtension: comment inlays + gutter marks + actions in every
         │   diff viewer whose content resolves to a project file

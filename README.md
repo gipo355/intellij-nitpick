@@ -1,4 +1,4 @@
-# Agent Review — IntelliJ plugin
+# Nitpick — IntelliJ plugin
 
 Review changes written by AI agents inside IntelliJ's diff viewer. Leave inline
 comments, mark files reviewed, then hand the review to any coding agent:
@@ -11,12 +11,12 @@ and Bitbucket Integration Pro, but built on IntelliJ's own diff engine.
 ## Install
 
 From JetBrains Marketplace: Settings | Plugins | Marketplace, search
-"Agent Review".
+"Nitpick".
 
 From source:
 
 ```bash
-./gradlew buildPlugin        # build/distributions/agent-review-<version>.zip
+./gradlew buildPlugin        # build/distributions/nitpick-<version>.zip
 ```
 
 Settings | Plugins | ⚙ | Install Plugin from Disk… → the zip, restart.
@@ -25,7 +25,7 @@ Requires IntelliJ 2026.2+ (build 262).
 ## The loop
 
 1. The agent edits your working tree or lands commits.
-2. Open the **Agent Review** tool window (right sidebar), pick a scope.
+2. Open the **Nitpick** tool window (right sidebar), pick a scope.
 3. Walk the files. Comment, mark reviewed, move on.
 4. Send the review, or let the agent pull it over MCP.
 5. The agent fixes things and resolves comments. Reviewed files it touched
@@ -45,13 +45,13 @@ comments and reviewed marks, so switching back and forth loses nothing.
 | Commit Range… | `base..head`, or `base...head` for merge-base |
 | Single Commit… | one commit vs its parent |
 
-From Git Log: right-click a commit → *Review Commit with Agent Review*.
+From Git Log: right-click a commit → *Review Commit with Nitpick*.
 Ctrl+click several commits → *Review Range of N Commits*, oldest vs newest,
 same semantics as the log's own *Compare Versions*.
 
 ## Reviewing
 
-Double-click a file (or Enter) to open it in the **Agent Review** diff tab. One
+Double-click a file (or Enter) to open it in the **Nitpick** diff tab. One
 tab is reused for the whole review.
 
 In the diff:
@@ -172,7 +172,7 @@ Without MCP, the same instruction works with the file channel: "read
 
 ## Settings
 
-Settings | Tools | Agent Review: intro sentence, snippets on/off and max lines,
+Settings | Tools | Nitpick: intro sentence, snippets on/off and max lines,
 include resolved comments, review file path, terminal tab regex, auto-submit,
 mark reviewed on open / close, open diff on single click. The header toggles
 write the same values.

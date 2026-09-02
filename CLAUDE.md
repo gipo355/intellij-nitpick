@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-IntelliJ plugin "Agent Review" (id `dev.gipo.agentreview`). Review agent-authored
+IntelliJ plugin "Nitpick" (id `dev.gipo.nitpick`; Kotlin packages and action ids still say `agentreview`). Review agent-authored
 diffs inline, mark files reviewed, hand the review to any agent.
 
 ## Build
@@ -10,7 +10,7 @@ diffs inline, mark files reviewed, hand the review to any agent.
 - Compiles against the local Toolbox IDE in `gradle.properties` (`ideaHome`),
   IU 262 (2026.2). IntelliJ Platform Gradle Plugin 2.18.1, Kotlin 2.3, JDK 21.
 - First Gradle run and `runIde` take minutes. Run them in the background.
-- Sandbox log: `.intellijPlatform/sandbox/agent-review/IU-*/log/idea.log`.
+- Sandbox log: `.intellijPlatform/sandbox/nitpick/IU-*/log/idea.log`.
   User's real IDE log: `~/.cache/JetBrains/IntelliJIdea2026.2/log/idea.log`.
 - The user installs the zip from disk into the real IDE. Descriptor has
   `require-restart="true"`.

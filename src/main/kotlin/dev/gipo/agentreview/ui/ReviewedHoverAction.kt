@@ -15,7 +15,7 @@ class ReviewedHoverAction(private val project: Project) : ChangesViewNodeAction 
 
     override fun createNodeHoverIcon(node: ChangesBrowserNode<*>): HoverIcon? {
         val change = node.userObject as? Change ?: return null
-        return object : HoverIcon(AllIcons.Actions.Checked, "Toggle reviewed (Agent Review)") {
+        return object : HoverIcon(AllIcons.Actions.Checked, "Toggle reviewed (Nitpick)") {
             override fun invokeAction(node: ChangesBrowserNode<*>) {
                 ToggleReviewedAction.toggleReviewed(project, ReviewPaths.relative(project, change), null) { ScopeChanges.afterHash(change) }
             }

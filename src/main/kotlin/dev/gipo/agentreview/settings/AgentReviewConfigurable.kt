@@ -8,7 +8,7 @@ import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 
-class AgentReviewConfigurable : BoundConfigurable("Agent Review") {
+class AgentReviewConfigurable : BoundConfigurable("Nitpick") {
 
     override fun createPanel(): DialogPanel {
         val s = AgentReviewSettings.getInstance().state
@@ -33,7 +33,7 @@ class AgentReviewConfigurable : BoundConfigurable("Agent Review") {
             }
             group("Review Flow") {
                 row {
-                    checkBox("Open diff on single click in the Agent Review tree").bindSelected(s::openDiffOnSingleClick)
+                    checkBox("Open diff on single click in the Nitpick tree").bindSelected(s::openDiffOnSingleClick)
                 }
                 row {
                     checkBox("Mark file reviewed when its diff is opened").bindSelected(s::autoMarkReviewedOnOpen)

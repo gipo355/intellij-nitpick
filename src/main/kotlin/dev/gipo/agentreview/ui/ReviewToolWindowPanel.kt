@@ -93,7 +93,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val handler = GatedPreviewHandler()
         val preview = object : TreeHandlerEditorDiffPreview(browser.viewer, handler) {
             override fun getEditorTabName(wrapper: ChangeViewDiffRequestProcessor.Wrapper?): String =
-                "Agent Review" + (wrapper?.presentableName?.let { ": $it" } ?: "")
+                "Nitpick" + (wrapper?.presentableName?.let { ": $it" } ?: "")
 
             override fun handleDoubleClick(e: MouseEvent): Boolean {
                 syncPreviewToSelection(handler)

@@ -5,7 +5,7 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
 
 object Notifications {
-    private fun group() = NotificationGroupManager.getInstance().getNotificationGroup("Agent Review")
+    private fun group() = NotificationGroupManager.getInstance().getNotificationGroup("Nitpick")
 
     fun info(project: Project, title: String, content: String) =
         group().createNotification(title, content, NotificationType.INFORMATION).notify(project)

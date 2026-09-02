@@ -62,7 +62,7 @@ class AgentReviewToolset : McpToolset {
     @McpTool
     @McpDescription(
         """Add a note or question for the human reviewer at a file location. Use it to ask about ambiguous review comments
-        or to flag something you deliberately left as is. It shows up in the IDE's Agent Review tool window.""",
+        or to flag something you deliberately left as is. It shows up in the IDE's Nitpick tool window.""",
     )
     suspend fun agent_review_add_comment(
         @McpDescription("Project-relative path, e.g. src/main/App.kt") path: String,

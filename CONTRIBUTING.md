@@ -10,7 +10,7 @@
 
 ```bash
 ./gradlew test          # unit + platform tests
-./gradlew buildPlugin   # build/distributions/agent-review-<version>.zip
+./gradlew buildPlugin   # build/distributions/nitpick-<version>.zip
 ./gradlew verifyPlugin  # IntelliJ Plugin Verifier, run before a release
 ```
 
@@ -21,14 +21,14 @@
 ```
 
 A second IntelliJ starts with the plugin installed and its own settings.
-Open any git project in it and use the **Agent Review** tool window.
+Open any git project in it and use the **Nitpick** tool window.
 
 ## Install in your real IDE
 
 1. `./gradlew buildPlugin`
 2. Settings | Plugins.
 3. Click the ⚙ gear icon at the top of the plugin list.
-4. Install Plugin from Disk… and pick `build/distributions/agent-review-<version>.zip`.
+4. Install Plugin from Disk… and pick `build/distributions/nitpick-<version>.zip`.
 5. Restart the IDE.
 
 Repeat the same steps with a new zip to update. Uninstall from the Installed tab.
@@ -38,7 +38,7 @@ Repeat the same steps with a new zip to update. Uninstall from the Installed tab
 1. Create a vendor account at https://plugins.jetbrains.com and generate a
    token under your profile (My Tokens).
 2. The first version must be uploaded manually: Upload plugin → the zip from
-   `./gradlew buildPlugin`. The plugin id `dev.gipo.agentreview` from
+   `./gradlew buildPlugin`. The plugin id `dev.gipo.nitpick` from
    `plugin.xml` becomes the Marketplace id. JetBrains reviews the first upload,
    usually within two business days.
 3. Every later version goes through Gradle with the token:

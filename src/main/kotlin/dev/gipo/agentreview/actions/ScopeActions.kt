@@ -15,7 +15,7 @@ import dev.gipo.agentreview.store.ReviewStore
 internal fun startReview(project: Project, scope: Scope) {
     ReviewStore.getInstance(project).setScope(scope)
     ReviewChangesModel.getInstance(project).refresh()
-    ToolWindowManager.getInstance(project).getToolWindow("Agent Review")?.activate(null)
+    ToolWindowManager.getInstance(project).getToolWindow("Nitpick")?.activate(null)
 }
 
 class ReviewCommitAction : AnAction(), DumbAware {
@@ -26,8 +26,8 @@ class ReviewCommitAction : AnAction(), DumbAware {
         val n = commits?.size ?: 0
         e.presentation.isEnabledAndVisible = e.project != null && n >= 1
         e.presentation.text = when {
-            n <= 1 -> "Review Commit with Agent Review"
-            else -> "Review Range of $n Commits with Agent Review"
+            n <= 1 -> "Review Commit with Nitpick"
+            else -> "Review Range of $n Commits with Nitpick"
         }
     }
 
