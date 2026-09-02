@@ -1,0 +1,38 @@
+plugins {
+    id("org.jetbrains.kotlin.jvm") version "2.3.21"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
+    id("org.jetbrains.intellij.platform") version "2.18.1"
+}
+
+group = "dev.gipo.agentreview"
+version = "0.1.0"
+
+repositories {
+    mavenCentral()
+    intellijPlatform { defaultRepositories() }
+}
+
+dependencies {
+    intellijPlatform {
+        local(providers.gradleProperty("ideaHome"))
+        bundledPlugin("Git4Idea")
+        bundledPlugin("org.jetbrains.plugins.terminal")
+        bundledPlugin("com.intellij.mcpServer")
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
+    }
+    testImplementation("junit:junit:4.13.2")
+}
+
+kotlin {
+    jvmToolchain(21)
+}
+
+intellijPlatform {
+    pluginConfiguration {
+        ideaVersion {
+            sinceBuild = "262"
+            untilBuild = provider { null }
+        }
+    }
+    buildSearchableOptions = false
+}
