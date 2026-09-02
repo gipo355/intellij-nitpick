@@ -74,6 +74,9 @@ import javax.swing.ListSelectionModel
 import com.intellij.diff.util.Side as DiffSide
 
 class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : SimpleToolWindowPanel(true, true), Disposable {
+    private companion object {
+        val LOG = com.intellij.openapi.diagnostic.logger<ReviewToolWindowPanel>()
+    }
 
     private val store = ReviewStore.getInstance(project)
     private val model = ReviewChangesModel.getInstance(project)
@@ -124,8 +127,16 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         model.diffOpener = { rc ->
             browser.viewer.setSelectedChanges(listOf(rc.change))
-            syncPreviewToSelection(handler)
-            preview.performDiffAction()
+            val selected = browser.selectedChanges
+            LOG.info("diffOpener selected=${selected.size} previewOpen=${preview.isPreviewOpen()} hasContent=${preview.hasContent()}")
+            if (selected.isEmpty()) {
+                false
+            } else {
+                syncPreviewToSelection(handler)
+                val ok = preview.performDiffAction()
+                LOG.info("diffOpener performDiffAction=$ok previewOpen=${preview.isPreviewOpen()}")
+                ok || preview.openPreview(true)
+            }
         }
         project.messageBus.connect(this).subscribe(AdvancedSettingsChangeListener.TOPIC, object : AdvancedSettingsChangeListener {
             override fun advancedSettingChanged(id: String, oldValue: Any, newValue: Any) {

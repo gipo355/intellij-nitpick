@@ -114,7 +114,9 @@ class ReviewChangesModel(private val project: Project) : Disposable {
         if (line != null) {
             pendingScroll = PendingScroll(rc.path, if (side == Side.LEFT) dev.gipo.agentreview.model.Side.OLD else dev.gipo.agentreview.model.Side.NEW, line)
         }
-        if (diffOpener?.invoke(rc) == true) return
+        val opened = diffOpener?.invoke(rc)
+        LOG.info("openDiff path=${rc.path} line=$line opener=${diffOpener != null} result=$opened")
+        if (opened == true) return
         val all = changes.map { it.change }
         val index = all.indexOf(rc.change).coerceAtLeast(0)
         val context = ShowDiffContext()
@@ -125,6 +127,7 @@ class ReviewChangesModel(private val project: Project) : Disposable {
     /** Opens the diff when the file is in scope, else the file itself. */
     fun navigate(path: String, line: Int?, side: Side = Side.RIGHT) {
         val rc = find(path)
+        LOG.info("navigate path=$path line=$line inScope=${rc != null} changes=${changes.size}")
         if (rc != null) {
             openDiff(rc, line, side)
             return
