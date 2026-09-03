@@ -53,6 +53,10 @@ diffs inline, mark files reviewed, hand the review to any agent.
 - `GitContentRevision` with revision `:0` reads the index (`git cat-file :0:path`).
 - `GitChangeUtils.getDiffWithWorkingDir` diffs HEAD vs working tree even for
   staged paths. Do not use it for the staged scope.
+- `BaseState.enum()` is inline bytecode built for a newer JVM target and fails
+  to compile against JDK 21. Store enums as a `string()` property.
+- `SimpleChangesBrowser.createPopupMenuActions` runs inside the super
+  constructor. An override must not touch instance state.
 
 ## Data model
 
