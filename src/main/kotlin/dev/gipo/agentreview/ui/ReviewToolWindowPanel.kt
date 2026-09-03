@@ -13,7 +13,12 @@ import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.util.Alarm
+import com.intellij.util.SingleAlarm
 import com.intellij.util.concurrency.AppExecutorUtil
+import com.intellij.openapi.vcs.changes.ChangeListListener
+import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryChangeListener
 import dev.gipo.agentreview.scope.ScopeChanges
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -235,6 +240,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 refreshUi()
             }
         })
+        val autoRefresh = SingleAlarm({ model.refresh() }, 1000, this, Alarm.ThreadToUse.SWING_THREAD, ModalityState.nonModal())
+        bus.subscribe(ChangeListListener.TOPIC, object : ChangeListListener {
+            override fun changeListUpdateDone() = autoRefresh.cancelAndRequest()
+        })
+        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { autoRefresh.cancelAndRequest() })
         refreshUi()
         model.refresh()
     }
