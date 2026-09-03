@@ -132,7 +132,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             }
         })
         model.diffOpener = { rc ->
-            browser.viewer.setSelectedChanges(listOf(rc.change))
+            browser.viewer.setSelectedChanges(listOfNotNull(rc.change))
             val selected = browser.selectedChanges
             LOG.info("diffOpener selected=${selected.size} previewOpen=${preview.isPreviewOpen()} hasContent=${preview.hasContent()}")
             if (selected.isEmpty()) {
@@ -263,7 +263,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 override fun actionPerformed(e: AnActionEvent) = store.update { it.copy(reviewed = emptyMap()) }
             })
             add(object : AnAction("Clear Resolved Comments", "Delete comments the agent already resolved", AllIcons.Actions.Cancel), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = store.update { s -> s.copy(comments = s.comments.filterNot { it.resolved }) }
+                override fun actionPerformed(e: AnActionEvent) = store.removeComments(model.comments().filter { it.resolved }.map { it.id })
             })
             add(object : AnAction("Clear Session", "Delete this scope's comments and reviewed marks", AllIcons.Actions.GC), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
@@ -335,7 +335,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
-        browser.setChangesToDisplay(visible.map { it.change })
+        browser.setChangesToDisplay(visible.mapNotNull { it.change })
     }
 
     private fun refreshUi() {
@@ -343,7 +343,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         showChanges()
         browser.viewer.repaint()
         commentsModel.clear()
-        session.comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
+        val comments = model.comments()
+        comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
         if (notes.text != session.notes) {
             suppressNotes = true
             notes.text = session.notes
@@ -352,7 +353,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val changes = model.changes
         val reviewed = changes.count { model.state(it) == ReviewState.REVIEWED }
         val stale = changes.count { model.state(it) == ReviewState.STALE }
-        val open = session.comments.count { !it.resolved }
+        val open = comments.count { !it.resolved }
         status.text = buildString {
             append("${changes.size} files · $reviewed reviewed")
             if (stale > 0) append(" · $stale stale")
@@ -428,7 +429,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val path = ReviewPaths.relative(project, change)
             val rc = model.find(path)
             val state = rc?.let { model.state(it) } ?: ReviewState.UNREVIEWED
-            val open = store.session.commentsFor(path).count { !it.resolved }
+            val open = model.commentsFor(path).count { !it.resolved }
             if (open > 0) component.append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
             when (state) {
                 ReviewState.REVIEWED -> component.append("  ✓", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, com.intellij.ui.JBColor(0x2E7D32, 0x81C784)))
@@ -445,6 +446,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             icon = if (value.resolved) AllIcons.RunConfigurations.TestPassed else AllIcons.Toolwindows.ToolWindowMessages
             if (value.type.marker.isNotEmpty()) append("[${value.type.marker}] ", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
             append(value.location(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+            if (value.outdated) append("  outdated", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
             append("  ")
             val attrs = if (value.resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES
             append(value.text.lineSequence().first().take(120), attrs)

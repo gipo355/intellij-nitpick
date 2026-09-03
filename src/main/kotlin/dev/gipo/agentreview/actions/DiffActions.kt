@@ -52,7 +52,7 @@ class EditFileCommentsGroup : ActionGroup("Edit Comment", true), DumbAware {
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         val project = e?.project ?: return emptyArray()
         val path = e.reviewPath() ?: return emptyArray()
-        val comments = ReviewStore.getInstance(project).session.commentsFor(path)
+        val comments = ReviewChangesModel.getInstance(project).commentsFor(path)
         return comments.map { c ->
             object : AnAction("${c.location()}  ${c.text.lineSequence().first().take(60)}"), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
@@ -81,7 +81,7 @@ class AddCommentAction : DiffReviewAction() {
         val snippet = binding.selectedText()
         CommentEditorPopup.showAtCaret(project, binding.editor, CommentType.NOTE, "") { text, type ->
             ReviewStore.getInstance(project).addComment(
-                Comment(path = binding.path, side = side, startLine = start, endLine = end, type = type, text = text, snippet = snippet),
+                Comment(path = binding.path, side = side, startLine = start, endLine = end, type = type, text = text, snippet = snippet, contentHash = binding.contentHash(side)),
             )
         }
     }

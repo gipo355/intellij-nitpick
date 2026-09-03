@@ -19,10 +19,19 @@ import dev.gipo.agentreview.ui.Notifications
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffContext
 import com.intellij.util.messages.Topic
+import dev.gipo.agentreview.model.Comment
+import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.ReviewState
 import dev.gipo.agentreview.store.ReviewStore
 
-data class ReviewedChange(val change: Change, val path: String, val hash: String?)
+data class ReviewedChange(
+    val path: String,
+    val hash: String?,
+    val beforeHash: String?,
+    val content: CharSequence?,
+    val beforeContent: CharSequence?,
+    val change: Change? = null,
+)
 
 interface ChangesListener {
     fun changesUpdated(changes: List<ReviewedChange>)
@@ -57,13 +66,16 @@ class ReviewChangesModel(private val project: Project) : Disposable {
             override fun run(indicator: ProgressIndicator) {
                 val result = try {
                     ScopeChanges.collect(project, scope).map {
-                        ReviewedChange(it, ReviewPaths.relative(project, it), ScopeChanges.afterHash(it))
+                        val after = ScopeChanges.content(it.afterRevision)
+                        val before = ScopeChanges.content(it.beforeRevision)
+                        ReviewedChange(ReviewPaths.relative(project, it), after?.let(ContentHash::of), before?.let(ContentHash::of), after, before, it)
                     }
                 } catch (e: Exception) {
                     LOG.warn("Failed to collect changes", e)
                     emptyList()
                 }
                 changes = result
+                inheritReviewedMarks(result)
                 ApplicationManager.getApplication().invokeLater({
                     if (!project.isDisposed) project.messageBus.syncPublisher(ChangesListener.TOPIC).changesUpdated(result)
                 }, project.disposed)
@@ -77,6 +89,33 @@ class ReviewChangesModel(private val project: Project) : Disposable {
                 }
             }
         }.queue()
+    }
+
+    /** A file marked reviewed in another scope at the same content counts as reviewed here. */
+    private fun inheritReviewedMarks(result: List<ReviewedChange>) {
+        val store = ReviewStore.getInstance(project)
+        val mine = store.session.reviewed
+        val others = store.otherSessions()
+        val inherited = result.mapNotNull { rc ->
+            val hash = rc.hash ?: return@mapNotNull null
+            if (mine.containsKey(rc.path)) return@mapNotNull null
+            if (others.any { it.reviewed[rc.path] == hash }) rc.path to hash else null
+        }
+        if (inherited.isNotEmpty()) store.update { s -> s.copy(reviewed = s.reviewed + inherited) }
+    }
+
+    /** Comments visible in the current scope, with lines moved to where their text is now. */
+    fun comments(): List<Comment> {
+        val store = ReviewStore.getInstance(project)
+        return CommentPlacer.place(store.comments, changes, store.currentKey)
+    }
+
+    /** Outside the scope (Git log, commit dialog) comments render at their stored lines. */
+    fun commentsFor(path: String): List<Comment> {
+        if (find(path) == null) {
+            return ReviewStore.getInstance(project).comments.filter { !it.isReviewLevel && ReviewPaths.matches(it.path, path) }
+        }
+        return comments().filter { !it.isReviewLevel && ReviewPaths.matches(it.path, path) }
     }
 
     fun find(path: String): ReviewedChange? =
@@ -117,10 +156,11 @@ class ReviewChangesModel(private val project: Project) : Disposable {
         val opened = diffOpener?.invoke(rc)
         LOG.info("openDiff path=${rc.path} line=$line opener=${diffOpener != null} result=$opened")
         if (opened == true) return
-        val all = changes.map { it.change }
-        val index = all.indexOf(rc.change).coerceAtLeast(0)
+        val change = rc.change ?: return
+        val all = changes.mapNotNull { it.change }
+        val index = all.indexOf(change).coerceAtLeast(0)
         val context = ShowDiffContext()
-        if (line != null) context.putChangeContext(rc.change, DiffUserDataKeys.SCROLL_TO_LINE, Pair.create(side, line - 1))
+        if (line != null) context.putChangeContext(change, DiffUserDataKeys.SCROLL_TO_LINE, Pair.create(side, line - 1))
         ShowDiffAction.showDiffForChange(project, all, index, context)
     }
 

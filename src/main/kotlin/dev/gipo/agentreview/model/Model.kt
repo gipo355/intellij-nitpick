@@ -67,6 +67,12 @@ data class Comment(
     val resolved: Boolean = false,
     /** Agent reply set when it resolves the comment. */
     val reply: String? = null,
+    /** Hash of the commented side's file content at creation. Null: never relocated. */
+    val contentHash: String? = null,
+    /** Session key the comment was written in. Only review-level comments are filtered by it. */
+    val scopeKey: String = "",
+    /** Runtime only: the commented text is gone from the file in the current scope. */
+    val outdated: Boolean = false,
 ) {
     val isFileLevel: Boolean get() = path.isNotEmpty() && startLine == null
     val isReviewLevel: Boolean get() = path.isEmpty()
@@ -84,6 +90,7 @@ data class Comment(
 @Serializable
 data class ReviewSession(
     val scope: Scope = Scope(),
+    /** Pre-0.2.1. Moved to [ReviewStorage.comments] on load. */
     val comments: List<Comment> = emptyList(),
     /** path -> content hash at the time of marking. */
     val reviewed: Map<String, String> = emptyMap(),
@@ -91,10 +98,7 @@ data class ReviewSession(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
-    val isEmpty: Boolean get() = comments.isEmpty() && reviewed.isEmpty() && notes.isBlank()
-
-    fun commentsFor(path: String): List<Comment> =
-        comments.filter { it.path == path || it.path.endsWith("/$path") || path.endsWith("/${it.path}") }
+    val isEmpty: Boolean get() = reviewed.isEmpty() && notes.isBlank()
 
     fun reviewState(path: String, currentHash: String?): ReviewState {
         val stored = reviewed[path] ?: return ReviewState.UNREVIEWED
@@ -111,9 +115,10 @@ val commentOrder: Comparator<Comment> = compareBy<Comment> { it.path }
     .thenBy { it.endLine ?: 0 }
     .thenBy { it.createdAt }
 
-/** All sessions of a project, one per scope key. */
+/** All sessions of a project, one per scope key. Comments are project-wide, anchored to file text. */
 @Serializable
 data class ReviewStorage(
     val sessions: Map<String, ReviewSession> = emptyMap(),
     val currentKey: String = Scope().key(),
+    val comments: List<Comment> = emptyList(),
 )

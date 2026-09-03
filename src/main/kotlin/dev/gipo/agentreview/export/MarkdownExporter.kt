@@ -22,8 +22,8 @@ data class ExportOptions(
 
 object MarkdownExporter {
 
-    fun export(session: ReviewSession, options: ExportOptions = ExportOptions()): String {
-        val comments = session.comments
+    fun export(session: ReviewSession, allComments: List<Comment>, options: ExportOptions = ExportOptions()): String {
+        val comments = allComments
             .filter { options.includeResolved || !it.resolved }
             .sortedWith(commentOrder)
         val reviewLevel = comments.filter { it.isReviewLevel }
@@ -59,7 +59,9 @@ object MarkdownExporter {
         val marker = if (c.type.marker.isEmpty()) "" else "**[${c.type.marker}]** "
         val prefix = "$number. "
         val lines = c.text.trim().lines()
-        sb.append(prefix).append(marker).append('`').append(c.location()).append("` - ")
+        sb.append(prefix).append(marker).append('`').append(c.location()).append('`')
+        if (c.outdated) sb.append(" (outdated)")
+        sb.append(" - ")
         sb.append(lines.firstOrNull() ?: "").append('\n')
         val pad = " ".repeat(prefix.length)
         lines.drop(1).forEach { sb.append(pad).append(it).append('\n') }

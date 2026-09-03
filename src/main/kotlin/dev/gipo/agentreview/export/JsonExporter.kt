@@ -26,25 +26,26 @@ object JsonExporter {
         put("type", c.type.name.lowercase())
         put("author", c.author.name.lowercase())
         put("resolved", c.resolved)
+        put("outdated", c.outdated)
         put("reply", c.reply?.let { JsonPrimitive(it) } ?: JsonNull)
         put("snippet", c.snippet?.let { JsonPrimitive(it) } ?: JsonNull)
         put("created_at", c.createdAt)
         put("text", c.text)
     }
 
-    fun comments(session: ReviewSession, includeResolved: Boolean): JsonArray = buildJsonArray {
-        session.comments
+    fun comments(comments: List<Comment>, includeResolved: Boolean): JsonArray = buildJsonArray {
+        comments
             .filter { includeResolved || !it.resolved }
             .sortedWith(commentOrder)
             .forEach { add(comment(it)) }
     }
 
-    fun session(session: ReviewSession, includeResolved: Boolean, branch: String?): JsonObject = buildJsonObject {
+    fun session(session: ReviewSession, comments: List<Comment>, includeResolved: Boolean, branch: String?): JsonObject = buildJsonObject {
         put("scope", session.scope.describe())
         put("branch", branch?.let { JsonPrimitive(it) } ?: JsonNull)
         put("notes", session.notes)
         put("reviewed_files", buildJsonArray { session.reviewed.keys.sorted().forEach { add(JsonPrimitive(it)) } })
-        put("comments", comments(session, includeResolved))
+        put("comments", comments(comments, includeResolved))
     }
 
     fun encode(element: JsonObject): String = json.encodeToString(JsonObject.serializer(), element)

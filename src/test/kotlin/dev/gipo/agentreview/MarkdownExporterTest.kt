@@ -13,8 +13,8 @@ import org.junit.Test
 
 class MarkdownExporterTest {
 
-    private val session = ReviewSession(
-        comments = listOf(
+    private val session = ReviewSession()
+    private val comments = listOf(
             Comment(path = "src/auth.rs", startLine = 50, endLine = 55, text = "This block could be refactored", createdAt = 2),
             Comment(
                 path = "src/auth.rs", startLine = 42, type = CommentType.ISSUE,
@@ -24,12 +24,11 @@ class MarkdownExporterTest {
             Comment(path = "src/old.rs", side = Side.OLD, startLine = 12, text = "why was this removed?", createdAt = 4),
             Comment(path = "", text = "overall fine", createdAt = 5),
             Comment(path = "src/done.rs", startLine = 1, text = "done already", resolved = true, createdAt = 6),
-        ),
     )
 
     @Test
     fun exportsTuicrCompatibleMarkdown() {
-        val out = MarkdownExporter.export(session, ExportOptions(branch = "main", mcpHint = false))
+        val out = MarkdownExporter.export(session, comments, ExportOptions(branch = "main", mcpHint = false))
         val expected = """
             |I reviewed your code and have the following comments. Please address them.
             |
@@ -51,29 +50,36 @@ class MarkdownExporterTest {
 
     @Test
     fun includesResolvedWhenAsked() {
-        val out = MarkdownExporter.export(session, ExportOptions(includeResolved = true, includeSnippets = false))
+        val out = MarkdownExporter.export(session, comments, ExportOptions(includeResolved = true, includeSnippets = false))
         assertTrue(out, out.contains("`src/done.rs:1` - done already\n   _(resolved)_"))
     }
 
     @Test
     fun multilineTextIsIndented() {
-        val s = ReviewSession(comments = listOf(Comment(path = "a.kt", startLine = 3, text = "first\nsecond")))
-        val out = MarkdownExporter.export(s, ExportOptions(includeSnippets = false))
+        val c = Comment(path = "a.kt", startLine = 3, text = "first\nsecond")
+        val out = MarkdownExporter.export(ReviewSession(), listOf(c), ExportOptions(includeSnippets = false))
         assertTrue(out, out.contains("1. `a.kt:3` - first\n   second\n"))
     }
 
     @Test
     fun emptySession() {
-        val out = MarkdownExporter.export(ReviewSession())
+        val out = MarkdownExporter.export(ReviewSession(), emptyList())
         assertTrue(out, out.endsWith("No comments.\n"))
     }
 
     @Test
     fun mentionsMcpToolsWhenEnabled() {
-        val out = MarkdownExporter.export(session, ExportOptions(mcpHint = true))
+        val out = MarkdownExporter.export(session, comments, ExportOptions(mcpHint = true))
         assertTrue(out, out.contains("agent_review_list_comments"))
         assertTrue(out, out.contains("agent_review_resolve_comment"))
-        val silent = MarkdownExporter.export(session, ExportOptions(mcpHint = false))
+        val silent = MarkdownExporter.export(session, comments, ExportOptions(mcpHint = false))
         assertFalse(silent, silent.contains("agent_review"))
+    }
+
+    @Test
+    fun outdatedCommentsAreMarked() {
+        val c = Comment(path = "a.kt", startLine = 3, text = "moved away", outdated = true)
+        val out = MarkdownExporter.export(session, listOf(c), ExportOptions(mcpHint = false))
+        assertTrue(out, out.contains("`a.kt:3` (outdated) - moved away"))
     }
 }
