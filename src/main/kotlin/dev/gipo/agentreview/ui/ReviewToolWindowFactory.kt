@@ -12,6 +12,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import dev.gipo.agentreview.settings.AgentReviewSettings
+import dev.gipo.agentreview.settings.AutoMark
 import dev.gipo.agentreview.settings.AgentReviewState
 import javax.swing.Icon
 import kotlin.reflect.KMutableProperty1
@@ -24,17 +25,28 @@ class ReviewToolWindowFactory : ToolWindowFactory, DumbAware {
 
         val toggles = listOf(
             SettingToggle("Open Diff on Single Click", AllIcons.Actions.Preview, AgentReviewState::openDiffOnSingleClick),
-            SettingToggle("Mark Reviewed When Diff Opens", AllIcons.Actions.SetDefault, AgentReviewState::autoMarkReviewedOnOpen),
-            SettingToggle("Mark Reviewed When Diff Closes", AllIcons.Actions.Exit, AgentReviewState::autoMarkReviewedOnClose),
         )
+        val autoMark = DefaultActionGroup("Auto-Mark Reviewed", AutoMark.entries.map { AutoMarkChoice(it) }).apply {
+            isPopup = true
+            templatePresentation.icon = AllIcons.Actions.SetDefault
+            templatePresentation.description = "Mark a file reviewed when its diff opens or closes"
+        }
         val continuous = object : ToggleAction("Continuous Diff (All Files in One View)", "IDE-wide diff setting, also used by the Commit tool window", AllIcons.Actions.ListFiles), DumbAware {
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
             override fun isSelected(e: AnActionEvent): Boolean = CombinedDiffRegistry.isEnabled()
             override fun setSelected(e: AnActionEvent, state: Boolean) = CombinedDiffRegistry.setCombinedDiffEnabled(state)
         }
-        val all = toggles + continuous
+        val all = toggles + autoMark + continuous
         toolWindow.setTitleActions(all)
         toolWindow.setAdditionalGearActions(DefaultActionGroup(all))
+    }
+
+    private class AutoMarkChoice(private val value: AutoMark) : ToggleAction(value.label), DumbAware {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.autoMark == value
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            if (state) AgentReviewSettings.getInstance().state.autoMark = value
+        }
     }
 
     /** Header quick toggle bound to one boolean setting. */
