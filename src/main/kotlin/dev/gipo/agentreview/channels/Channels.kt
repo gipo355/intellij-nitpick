@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import dev.gipo.agentreview.export.JsonExporter
 import dev.gipo.agentreview.export.MarkdownExporter
+import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ScopeChanges
 import dev.gipo.agentreview.settings.AgentReviewSettings
 import dev.gipo.agentreview.store.ReviewStore
@@ -29,7 +30,8 @@ object ReviewExport {
         } catch (e: Exception) {
             null
         }
-        return MarkdownExporter.export(session, AgentReviewSettings.getInstance().exportOptions(branch))
+        val comments = ReviewChangesModel.getInstance(project).comments()
+        return MarkdownExporter.export(session, comments, AgentReviewSettings.getInstance().exportOptions(branch))
     }
 
     fun json(project: Project): String {
@@ -39,7 +41,8 @@ object ReviewExport {
         } catch (e: Exception) {
             null
         }
-        return JsonExporter.encode(JsonExporter.session(session, AgentReviewSettings.getInstance().state.includeResolved, branch))
+        val comments = ReviewChangesModel.getInstance(project).comments()
+        return JsonExporter.encode(JsonExporter.session(session, comments, AgentReviewSettings.getInstance().state.includeResolved, branch))
     }
 }
 

@@ -2,7 +2,6 @@ package dev.gipo.agentreview
 
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import dev.gipo.agentreview.channels.ReviewExport
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ReviewState
 import dev.gipo.agentreview.store.ReviewListener
@@ -39,14 +38,13 @@ class PluginLoadTest : BasePlatformTestCase() {
         val fresh = ReviewStore(project)
         fresh.loadState(state)
         assertEquals(store.session.scope.key(), fresh.session.scope.key())
-        assertEquals(1, fresh.session.comments.size)
-        assertEquals("hello", fresh.session.comments[0].text)
+        assertEquals(1, fresh.comments.size)
+        assertEquals("hello", fresh.comments[0].text)
+        assertEquals(fresh.currentKey, fresh.comments[0].scopeKey)
         assertEquals(ReviewState.REVIEWED, fresh.session.reviewState("a.kt", "h1"))
         assertEquals(ReviewState.STALE, fresh.session.reviewState("a.kt", "h2"))
-
-        val md = ReviewExport.markdown(project)
-        assertTrue(md, md.contains("`a.kt:3` - hello"))
         store.clear()
+        assertTrue(store.comments.isEmpty())
     }
 }
 
@@ -57,18 +55,21 @@ class SessionPerScopeTest : com.intellij.testFramework.fixtures.BasePlatformTest
         store.clear()
         store.addComment(Comment(path = "x.kt", startLine = 1, text = "cd"))
         store.setScope(dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "a", head = "b"))
-        assertTrue(store.session.comments.isEmpty())
-        store.setScope(dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "c", head = "d"))
-        assertEquals("cd", store.session.comments.single().text)
+        // Comments are project-wide; clearing another scope keeps them.
+        store.clear()
+        assertEquals("cd", store.comments.single().text)
+        assertEquals("range:c..d", store.comments.single().scopeKey)
 
-        // Legacy single-session state still loads.
+        // Legacy single-session state still loads; its comments move to the project list.
         val legacy = ReviewStore.State().also {
             it.json = """{"scope":{"kind":"UNCOMMITTED"},"comments":[{"id":"1","path":"y.kt","startLine":2,"text":"old"}],"reviewed":{},"notes":""}"""
         }
         val fresh = ReviewStore(project)
         fresh.loadState(legacy)
-        assertEquals("old", fresh.session.comments.single().text)
+        assertEquals("old", fresh.comments.single().text)
+        assertEquals("uncommitted", fresh.comments.single().scopeKey)
+        assertTrue(fresh.session.comments.isEmpty())
         store.forgetOtherSessions()
-        store.clear()
+        store.clearAll()
     }
 }

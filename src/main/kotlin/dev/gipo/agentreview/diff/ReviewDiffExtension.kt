@@ -18,6 +18,7 @@ import dev.gipo.agentreview.model.Side
 import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.settings.AgentReviewSettings
+import dev.gipo.agentreview.settings.AutoMark
 import dev.gipo.agentreview.store.ReviewStore
 import dev.gipo.agentreview.model.ContentHash
 import com.intellij.diff.util.Side as DiffSide
@@ -71,7 +72,7 @@ class ReviewDiffExtension : DiffExtension() {
         editors: List<com.intellij.openapi.editor.ex.EditorEx>,
     ) {
         val settings = AgentReviewSettings.getInstance().state
-        if (!settings.autoMarkReviewedOnClose && !settings.autoMarkReviewedOnOpen) return
+        if (settings.autoMark == AutoMark.OFF) return
         val hash = ReviewChangesModel.getInstance(project).find(path)?.hash
             ?: content?.let { c ->
                 try {
@@ -83,25 +84,25 @@ class ReviewDiffExtension : DiffExtension() {
             ?: ""
         val mark = { if (!project.isDisposed) ReviewStore.getInstance(project).setReviewed(path, hash) }
         if (!combined) {
-            if (settings.autoMarkReviewedOnOpen) mark()
-            if (settings.autoMarkReviewedOnClose) com.intellij.openapi.util.Disposer.register(viewer) { mark() }
+            if (settings.autoMark == AutoMark.ON_OPEN) mark()
+            if (settings.autoMark == AutoMark.ON_CLOSE) com.intellij.openapi.util.Disposer.register(viewer) { mark() }
             return
         }
         var visited = false
         val listener = object : java.awt.event.FocusAdapter() {
             override fun focusGained(e: java.awt.event.FocusEvent) {
                 visited = true
-                if (AgentReviewSettings.getInstance().state.autoMarkReviewedOnOpen) mark()
+                if (AgentReviewSettings.getInstance().state.autoMark == AutoMark.ON_OPEN) mark()
             }
 
             override fun focusLost(e: java.awt.event.FocusEvent) {
-                if (visited && AgentReviewSettings.getInstance().state.autoMarkReviewedOnClose) mark()
+                if (visited && AgentReviewSettings.getInstance().state.autoMark == AutoMark.ON_CLOSE) mark()
             }
         }
         editors.forEach { it.contentComponent.addFocusListener(listener) }
         com.intellij.openapi.util.Disposer.register(viewer) {
             editors.forEach { if (!it.isDisposed) it.contentComponent.removeFocusListener(listener) }
-            if (visited && AgentReviewSettings.getInstance().state.autoMarkReviewedOnClose) mark()
+            if (visited && AgentReviewSettings.getInstance().state.autoMark == AutoMark.ON_CLOSE) mark()
         }
     }
 

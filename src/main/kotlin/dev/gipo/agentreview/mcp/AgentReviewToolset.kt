@@ -12,6 +12,7 @@ import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.CommentType
 import dev.gipo.agentreview.model.Side
 import dev.gipo.agentreview.scope.ReviewChangesModel
+import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.store.ReviewStore
 import kotlinx.serialization.Serializable
 import kotlin.coroutines.coroutineContext
@@ -43,8 +44,8 @@ class AgentReviewToolset : McpToolset {
     suspend fun agent_review_list_comments(
         @McpDescription("Include comments already marked resolved") include_resolved: Boolean = false,
     ): String {
-        val session = ReviewStore.getInstance(coroutineContext.project).session
-        return JsonExporter.encode(JsonExporter.comments(session, include_resolved))
+        val comments = ReviewChangesModel.getInstance(coroutineContext.project).comments()
+        return JsonExporter.encode(JsonExporter.comments(comments, include_resolved))
     }
 
     @McpTool
@@ -54,7 +55,7 @@ class AgentReviewToolset : McpToolset {
         @McpDescription("What you changed, one or two sentences") reply: String = "",
     ): ResolveResult {
         val store = ReviewStore.getInstance(coroutineContext.project)
-        if (store.session.comments.none { it.id == id }) mcpFail("No comment with id $id")
+        if (store.comments.none { it.id == id }) mcpFail("No comment with id $id")
         store.updateComment(id) { it.copy(resolved = true, reply = reply.ifBlank { null }) }
         return ResolveResult(id, true)
     }
@@ -71,7 +72,8 @@ class AgentReviewToolset : McpToolset {
         @McpDescription("1-based end line for a range") end_line: Int = 0,
         @McpDescription("note, issue, question, nit, praise") type: String = "question",
     ): AddResult {
-        val store = ReviewStore.getInstance(coroutineContext.project)
+        val project = coroutineContext.project
+        val store = ReviewStore.getInstance(project)
         val commentType = CommentType.entries.firstOrNull { it.name.equals(type, ignoreCase = true) } ?: CommentType.QUESTION
         val comment = Comment(
             path = path.trim().trimStart('/'),
@@ -81,6 +83,7 @@ class AgentReviewToolset : McpToolset {
             type = commentType,
             text = text,
             author = Author.AGENT,
+            contentHash = if (line > 0) ReviewChangesModel.getInstance(project).find(path)?.hash else null,
         )
         store.addComment(comment)
         return AddResult(comment.id, comment.location())
@@ -90,10 +93,10 @@ class AgentReviewToolset : McpToolset {
     @McpDescription("Files in the current review scope with their review state (reviewed, stale, unreviewed) and open comment counts.")
     suspend fun agent_review_status(): StatusResult {
         val project = coroutineContext.project
-        val store = ReviewStore.getInstance(project)
         val model = ReviewChangesModel.getInstance(project)
+        val open = model.comments().filter { !it.resolved }
         return StatusResult(model.changes.map { rc ->
-            FileStatus(rc.path, model.state(rc).name.lowercase(), store.session.commentsFor(rc.path).count { !it.resolved })
+            FileStatus(rc.path, model.state(rc).name.lowercase(), open.count { ReviewPaths.matches(it.path, rc.path) })
         })
     }
 

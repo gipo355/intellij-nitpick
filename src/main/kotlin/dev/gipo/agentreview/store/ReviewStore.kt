@@ -39,6 +39,12 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
 
     val sessionCount: Int get() = storage.sessions.count { !it.value.isEmpty }
 
+    val comments: List<Comment> get() = storage.comments
+    val currentKey: String get() = storage.currentKey
+
+    /** Other sessions' reviewed marks, for hash carry-over. */
+    fun otherSessions(): List<ReviewSession> = storage.sessions.filterKeys { it != storage.currentKey }.values.toList()
+
     override fun getState(): State = State().also {
         val current = storage.currentKey
         val kept = storage.sessions
@@ -52,17 +58,28 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
     override fun loadState(state: State) {
         if (state.json.isBlank()) return
         storage = try {
-            if (state.json.contains("\"sessions\"")) {
+            val loaded = if (state.json.contains("\"sessions\"")) {
                 json.decodeFromString(ReviewStorage.serializer(), state.json)
             } else {
                 // Pre-0.2 format: a single session.
                 val legacy = json.decodeFromString(ReviewSession.serializer(), state.json)
                 ReviewStorage(mapOf(legacy.scope.key() to legacy), legacy.scope.key())
             }
+            migrate(loaded)
         } catch (e: Exception) {
             LOG.warn("Discarding unreadable review state", e)
             ReviewStorage()
         }
+    }
+
+    /** Pre-0.2.1: comments lived inside sessions. */
+    private fun migrate(s: ReviewStorage): ReviewStorage {
+        if (s.sessions.values.all { it.comments.isEmpty() }) return s
+        val moved = s.sessions.flatMap { (key, session) -> session.comments.map { it.copy(scopeKey = key) } }
+        return s.copy(
+            comments = s.comments + moved.filter { m -> s.comments.none { it.id == m.id } },
+            sessions = s.sessions.mapValues { it.value.copy(comments = emptyList()) },
+        )
     }
 
     fun update(transform: (ReviewSession) -> ReviewSession) {
@@ -80,12 +97,19 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
         if (!project.isDisposed) project.messageBus.syncPublisher(ReviewListener.TOPIC).sessionChanged(updated)
     }
 
-    fun addComment(comment: Comment) = update { it.copy(comments = it.comments + comment) }
+    private fun updateStorage(transform: (ReviewStorage) -> ReviewStorage) {
+        synchronized(this) { storage = transform(storage) }
+        update { it }
+    }
+
+    fun addComment(comment: Comment) = updateStorage { it.copy(comments = it.comments + comment.copy(scopeKey = it.currentKey)) }
 
     fun updateComment(id: String, transform: (Comment) -> Comment) =
-        update { s -> s.copy(comments = s.comments.map { if (it.id == id) transform(it) else it }) }
+        updateStorage { s -> s.copy(comments = s.comments.map { if (it.id == id) transform(it) else it }) }
 
-    fun removeComment(id: String) = update { s -> s.copy(comments = s.comments.filterNot { it.id == id }) }
+    fun removeComment(id: String) = removeComments(setOf(id))
+
+    fun removeComments(ids: Collection<String>) = updateStorage { s -> s.copy(comments = s.comments.filterNot { it.id in ids }) }
 
     fun setReviewed(path: String, hash: String?) = update { s ->
         if (hash == null) s.copy(reviewed = s.reviewed - path) else s.copy(reviewed = s.reviewed + (path to hash))
@@ -96,23 +120,37 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
         synchronized(this) {
             val key = scope.key()
             val existing = storage.sessions[key]?.copy(scope = scope) ?: ReviewSession(scope = scope)
-            storage = ReviewStorage(storage.sessions + (key to existing), key)
+            storage = storage.copy(sessions = storage.sessions + (key to existing), currentKey = key)
+        }
+        update { it }
+    }
+
+    /** Adds the session under its scope key and switches to it. Comments with known ids are replaced. */
+    fun importSession(session: ReviewSession, comments: List<Comment>) {
+        synchronized(this) {
+            val ids = comments.map { it.id }.toSet()
+            val key = session.scope.key()
+            storage = storage.copy(
+                sessions = storage.sessions + (key to session),
+                comments = storage.comments.filterNot { it.id in ids } + comments,
+                currentKey = key,
+            )
         }
         update { it }
     }
 
     fun setNotes(notes: String) = update { it.copy(notes = notes) }
 
-    /** Wipes the current session's comments, marks and notes. */
-    fun clear() = update { ReviewSession(scope = it.scope) }
-
-    /** Drops every session, including the current one. Scope selection is kept. */
-    fun clearAll() {
-        synchronized(this) {
-            storage = ReviewStorage(mapOf(storage.currentKey to ReviewSession(scope = session.scope)), storage.currentKey)
-        }
-        update { it }
+    /** Marks and notes of this scope, plus comments written in it. */
+    fun clear() = updateStorage { s ->
+        s.copy(
+            comments = s.comments.filterNot { it.scopeKey == s.currentKey },
+            sessions = s.sessions + (s.currentKey to ReviewSession(scope = session.scope)),
+        )
     }
+
+    /** Drops every session and comment. Scope selection is kept. */
+    fun clearAll() = updateStorage { s -> ReviewStorage(mapOf(s.currentKey to ReviewSession(scope = session.scope)), s.currentKey) }
 
     /** Drops every session except the current one. */
     fun forgetOtherSessions() {

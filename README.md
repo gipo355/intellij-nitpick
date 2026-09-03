@@ -44,7 +44,8 @@ Requires IntelliJ 2026.2+ (build 262).
 3. Walk the files. Comment, mark reviewed, move on.
 4. Send the review, or let the agent pull it over MCP.
 5. The agent fixes things and resolves comments. Reviewed files it touched
-   again show as *changed*, so you re-check only those.
+   again show as *changed*, so you re-check only those. The tree refreshes
+   on its own when the working tree or the repository changes.
 
 ## Scopes
 
@@ -74,7 +75,7 @@ In the diff:
 | Action | Where |
 |---|---|
 | Comment a line or selection | hover the line and click **+** in the gutter, `Alt+Shift+C`, or the toolbar |
-| Comment the whole file | `Alt+Shift+F` |
+| Comment the whole file | `Alt+Shift+F` or the toolbar; the card sits above line 1 |
 | Toggle file reviewed | `Alt+Shift+R` or the ✓ toolbar button |
 | Next / previous unreviewed file | `Alt+Shift+N` / `Alt+Shift+P` or the arrows |
 | Copy review Markdown | `Alt+Shift+Y` |
@@ -88,27 +89,35 @@ green and show the agent's reply when it resolved them.
 In the tool window:
 
 - **Tree**: ✓ reviewed, *⟳ changed* when the file changed since you marked it,
-  `N ✎` open comments. `Space` toggles reviewed. The Commit tool window also
-  gets a ✓ hover icon on every file row, and *Review Uncommitted Changes* in
-  its context menu.
+  `N ✎` open comments. `Space` toggles reviewed. Right-click a file for Mark
+  Reviewed, Add File Comment and Edit Comment. *Hide Reviewed Files* in the
+  toolbar leaves only unreviewed and changed files. The Commit tool window
+  also gets a ✓ hover icon on every file row, and *Review Uncommitted Changes*
+  in its context menu.
 - **Comments list**: Enter or double-click opens the diff at the line, or the
   file itself when it is outside the current scope. `R` resolves, `Delete`
   removes. Right-click for Open in Diff, Edit, Resolve, Copy Location, Delete.
-- **Notes**: free text for the whole review, exported at the end.
+  *outdated* marks a comment whose text is gone from the file in this scope.
+- **Notes**: free text for the whole review, exported at the end. Drag the
+  divider to give it more room.
 - **Status line**: files, reviewed, stale, open comments, scope, other saved
   sessions.
 
 Toolbar cleanup: *Reset Reviewed Marks* (keeps comments), *Clear Resolved
-Comments*, *Clear Session* (this scope), *Clear All Sessions* (every scope of
-the project), *Forget Other Sessions*.
+Comments*, *Clear Session* (this scope's marks, notes and the comments written
+in it), *Clear All Sessions* (everything), *Forget Other Sessions*.
+
+*Export Session…* writes marks, notes and comments of the current scope to a
+JSON file. *Import Session…* loads one and switches to its scope. Use it to
+move a review to another machine or hand it over.
 
 Header quick toggles (also in the ⋮ menu):
 
 - **Open Diff on Single Click**: the diff tab follows the tree selection. Off
   means only double-click, Enter and the unreviewed arrows change it.
-- **Mark Reviewed When Diff Opens** / **Closes**: hands-free marking as you walk
-  the files. In continuous mode a file counts as opened when you click into its
-  block.
+- **Auto-Mark Reviewed**: off, when the diff opens, or when it closes.
+  Hands-free marking as you walk the files. In continuous mode a file counts as
+  opened when you click into its block.
 - **Continuous Diff**: all files in one scrollable view instead of one file per
   tab. IDE-wide setting, shared with the Commit tool window.
 
@@ -130,6 +139,8 @@ I reviewed your code and have the following comments. Please address them.
 
 Scope: uncommitted changes on `main`
 
+If you have the agent_review MCP tools: call agent_review_list_comments for ids, fix each item, then agent_review_resolve_comment with a one-line reply. Ask with agent_review_add_comment when a comment is unclear. Otherwise reply here with what you changed per item.
+
 1. **[ISSUE]** `src/auth.rs:42` - Magic number should be a named constant
    ```rust
    let timeout = 3000;
@@ -141,8 +152,9 @@ Review notes:
 - overall fine, ship after fixes
 ```
 
-`~` marks a line on the old side of the diff. Snippets, intro sentence and
-resolved-comment inclusion are settings.
+`~` marks a line on the old side of the diff. `(outdated)` after a location
+means the commented text is gone. Snippets, intro sentence, the MCP paragraph
+and resolved-comment inclusion are settings.
 
 ### MCP
 
@@ -188,15 +200,28 @@ Without MCP, the same instruction works with the file channel: "read
 ## Settings
 
 Settings | Tools | Nitpick: intro sentence, snippets on/off and max lines,
-include resolved comments, review file path, terminal tab regex, auto-submit,
-mark reviewed on open / close, open diff on single click. The header toggles
-write the same values.
+include resolved comments, MCP paragraph, review file path, terminal tab regex,
+auto-submit, auto-mark reviewed (off / open / close), open diff on single
+click. The header toggles write the same values.
 
 ## Persistence
 
-Sessions live in `.idea/workspace.xml`, per user, never committed. One session
-per scope, the 30 most recent are kept. Nothing else touches disk unless you
-use *Write Review File*.
+Everything lives in `.idea/workspace.xml`, per user, never committed. Nothing
+else touches disk unless you use *Write Review File* or *Export Session*.
+
+Comments belong to files, not scopes. Each one remembers the file content it
+was written on and the commented text. Any scope that contains the file shows
+the comment: at the same line when the file is unchanged, at the line where
+the text moved to, or as *outdated* in the comments list when the text is
+gone. So a comment left on uncommitted changes is still there when you review
+the commit, or a range around it, and a comment on commit C shows up in
+`A..D` and `B..E` alike.
+
+Reviewed marks work the same way: a file marked reviewed in one scope is
+reviewed in every scope where its content is identical.
+
+Sessions hold the scope, the reviewed marks and the notes. One per scope, the
+30 most recent are kept.
 
 ## Contributing
 

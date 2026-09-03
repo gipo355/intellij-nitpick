@@ -10,16 +10,20 @@ data class ExportOptions(
     val snippetMaxLines: Int = 12,
     val includeResolved: Boolean = false,
     val branch: String? = null,
+    val mcpHint: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_INTRO = "I reviewed your code and have the following comments. Please address them."
+        const val MCP_HINT = "If you have the agent_review MCP tools: call agent_review_list_comments for ids, " +
+            "fix each item, then agent_review_resolve_comment with a one-line reply. " +
+            "Ask with agent_review_add_comment when a comment is unclear. Otherwise reply here with what you changed per item."
     }
 }
 
 object MarkdownExporter {
 
-    fun export(session: ReviewSession, options: ExportOptions = ExportOptions()): String {
-        val comments = session.comments
+    fun export(session: ReviewSession, allComments: List<Comment>, options: ExportOptions = ExportOptions()): String {
+        val comments = allComments
             .filter { options.includeResolved || !it.resolved }
             .sortedWith(commentOrder)
         val reviewLevel = comments.filter { it.isReviewLevel }
@@ -30,6 +34,7 @@ object MarkdownExporter {
         sb.append("Scope: ").append(session.scope.describe())
         options.branch?.let { sb.append(" on `").append(it).append('`') }
         sb.append("\n\n")
+        if (options.mcpHint) sb.append(ExportOptions.MCP_HINT).append("\n\n")
 
         if (located.isEmpty() && reviewLevel.isEmpty() && session.notes.isBlank()) {
             sb.append("No comments.\n")
@@ -54,7 +59,9 @@ object MarkdownExporter {
         val marker = if (c.type.marker.isEmpty()) "" else "**[${c.type.marker}]** "
         val prefix = "$number. "
         val lines = c.text.trim().lines()
-        sb.append(prefix).append(marker).append('`').append(c.location()).append("` - ")
+        sb.append(prefix).append(marker).append('`').append(c.location()).append('`')
+        if (c.outdated) sb.append(" (outdated)")
+        sb.append(" - ")
         sb.append(lines.firstOrNull() ?: "").append('\n')
         val pad = " ".repeat(prefix.length)
         lines.drop(1).forEach { sb.append(pad).append(it).append('\n') }

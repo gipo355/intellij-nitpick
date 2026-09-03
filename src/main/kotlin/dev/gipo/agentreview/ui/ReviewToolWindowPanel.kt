@@ -8,11 +8,17 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.util.Alarm
+import com.intellij.util.SingleAlarm
 import com.intellij.util.concurrency.AppExecutorUtil
+import com.intellij.openapi.vcs.changes.ChangeListListener
+import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryChangeListener
 import dev.gipo.agentreview.scope.ScopeChanges
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -33,6 +39,12 @@ import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
 import com.intellij.openapi.vcs.changes.ui.SimpleChangesBrowser
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
+import com.intellij.openapi.fileChooser.FileChooserFactory
+import com.intellij.openapi.fileChooser.FileSaverDescriptor
+import com.intellij.openapi.vfs.VirtualFile
+import dev.gipo.agentreview.export.SessionFile
 import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
@@ -80,12 +92,17 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private val store = ReviewStore.getInstance(project)
     private val model = ReviewChangesModel.getInstance(project)
-    private val browser = SimpleChangesBrowser(project, false, false)
+    private val browser = object : SimpleChangesBrowser(project, false, false) {
+        // Called from the super constructor: no instance state allowed here.
+        override fun createPopupMenuActions(): List<AnAction> =
+            super.createPopupMenuActions() + Separator.getInstance() + ActionManager.getInstance().getAction("AgentReview.TreePopup")
+    }
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
     private val status = JBLabel()
-    private val notes = JBTextArea(2, 20)
+    private val notes = JBTextArea(6, 20)
     private var suppressNotes = false
+    private var shown: List<String> = emptyList()
 
     init {
         Disposer.register(parent, this)
@@ -126,7 +143,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             }
         })
         model.diffOpener = { rc ->
-            browser.viewer.setSelectedChanges(listOf(rc.change))
+            browser.viewer.setSelectedChanges(listOfNotNull(rc.change))
             val selected = browser.selectedChanges
             LOG.info("diffOpener selected=${selected.size} previewOpen=${preview.isPreviewOpen()} hasContent=${preview.hasContent()}")
             if (selected.isEmpty()) {
@@ -188,15 +205,19 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             }
         })
 
-        val bottom = JPanel(BorderLayout()).apply {
+        val commentsPane = JPanel(BorderLayout()).apply {
             add(JBLabel("Comments").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
             add(JBScrollPane(commentsList), BorderLayout.CENTER)
-            add(JPanel(BorderLayout()).apply {
-                add(JBLabel("Notes").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
-                add(JBScrollPane(notes), BorderLayout.CENTER)
-            }, BorderLayout.SOUTH)
         }
-        val splitter = OnePixelSplitter(true, 0.55f).apply {
+        val notesPane = JPanel(BorderLayout()).apply {
+            add(JBLabel("Notes for the agent").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
+            add(JBScrollPane(notes), BorderLayout.CENTER)
+        }
+        val bottom = OnePixelSplitter(true, "Nitpick.notesSplit", 0.6f).apply {
+            firstComponent = commentsPane
+            secondComponent = notesPane
+        }
+        val splitter = OnePixelSplitter(true, "Nitpick.treeSplit", 0.5f).apply {
             firstComponent = browser
             secondComponent = bottom
         }
@@ -215,10 +236,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         bus.subscribe(ChangesListener.TOPIC, object : ChangesListener {
             override fun changesUpdated(changes: List<ReviewedChange>) {
-                browser.setChangesToDisplay(changes.map { it.change })
+                shown = emptyList()
                 refreshUi()
             }
         })
+        val autoRefresh = SingleAlarm({ model.refresh() }, 1000, this, Alarm.ThreadToUse.SWING_THREAD, ModalityState.nonModal())
+        bus.subscribe(ChangeListListener.TOPIC, object : ChangeListListener {
+            override fun changeListUpdateDone() = autoRefresh.cancelAndRequest()
+        })
+        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { autoRefresh.cancelAndRequest() })
         refreshUi()
         model.refresh()
     }
@@ -234,17 +260,33 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(object : AnAction("Toggle Reviewed", "Space also toggles the selected file", AllIcons.Actions.Checked), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
+            add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
+            add(object : ToggleAction("Hide Reviewed Files", "Show only unreviewed and changed files", AllIcons.Actions.ToggleVisibility), DumbAware {
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.hideReviewedFiles
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    AgentReviewSettings.getInstance().state.hideReviewedFiles = state
+                    showChanges()
+                }
+            })
             add(Separator.getInstance())
             add(ActionManager.getInstance().getAction("AgentReview.CopyMarkdown"))
             add(ActionManager.getInstance().getAction("AgentReview.SendToTerminal"))
             add(ActionManager.getInstance().getAction("AgentReview.WriteFile"))
             add(ActionManager.getInstance().getAction("AgentReview.SendGroup"))
             add(Separator.getInstance())
+            add(object : AnAction("Export Session…", "Save this scope's marks, notes and comments to a JSON file", AllIcons.ToolbarDecorator.Export), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = exportSession()
+            })
+            add(object : AnAction("Import Session…", "Load a session exported by Nitpick", AllIcons.ToolbarDecorator.Import), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = importSession()
+            })
+            add(Separator.getInstance())
             add(object : AnAction("Reset Reviewed Marks", "Unmark every file, keep comments", AllIcons.Actions.Rollback), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = store.update { it.copy(reviewed = emptyMap()) }
             })
             add(object : AnAction("Clear Resolved Comments", "Delete comments the agent already resolved", AllIcons.Actions.Cancel), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = store.update { s -> s.copy(comments = s.comments.filterNot { it.resolved }) }
+                override fun actionPerformed(e: AnActionEvent) = store.removeComments(model.comments().filter { it.resolved }.map { it.id })
             })
             add(object : AnAction("Clear Session", "Delete this scope's comments and reviewed marks", AllIcons.Actions.GC), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
@@ -267,7 +309,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             })
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("AgentReviewToolbar", group, true)
-        toolbar.targetComponent = this
+        toolbar.targetComponent = browser.viewer
         return toolbar.component
     }
 
@@ -309,11 +351,54 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         )
     }
 
+    private fun exportSession() {
+        val descriptor = FileSaverDescriptor("Export Review Session", "Marks, notes and comments of ${store.session.scope.describe()}", "json")
+        val wrapper = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project).save(null as VirtualFile?, "nitpick-review.json") ?: return
+        val branch = try {
+            ScopeChanges.currentBranch(project)
+        } catch (e: Exception) {
+            null
+        }
+        // Original comments, not placed ones: lines stay anchored to their own hash.
+        val ids = model.comments().map { it.id }.toSet()
+        val comments = store.comments.filter { it.id in ids }
+        try {
+            wrapper.file.writeText(SessionFile.encode(store.session, comments, branch))
+            Notifications.info(project, "Session exported", wrapper.file.path)
+        } catch (e: Exception) {
+            Notifications.warn(project, "Cannot write session file", e.message ?: e.toString())
+        }
+    }
+
+    private fun importSession() {
+        val vf = FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFileDescriptor("json"), project, null) ?: return
+        val file = try {
+            SessionFile.decode(String(vf.contentsToByteArray()))
+        } catch (e: Exception) {
+            Notifications.warn(project, "Not a Nitpick session file", e.message ?: e.toString())
+            return
+        }
+        store.importSession(file.session, file.comments)
+        model.refresh()
+    }
+
+    /** Reviewed files drop out when the toggle is on. Stale files stay. */
+    private fun showChanges() {
+        val hide = AgentReviewSettings.getInstance().state.hideReviewedFiles
+        val visible = model.changes.filter { !hide || model.state(it) != ReviewState.REVIEWED }
+        val paths = visible.map { it.path }
+        if (paths == shown) return
+        shown = paths
+        browser.setChangesToDisplay(visible.mapNotNull { it.change })
+    }
+
     private fun refreshUi() {
         val session = store.session
+        showChanges()
         browser.viewer.repaint()
         commentsModel.clear()
-        session.comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
+        val comments = model.comments()
+        comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
         if (notes.text != session.notes) {
             suppressNotes = true
             notes.text = session.notes
@@ -322,7 +407,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val changes = model.changes
         val reviewed = changes.count { model.state(it) == ReviewState.REVIEWED }
         val stale = changes.count { model.state(it) == ReviewState.STALE }
-        val open = session.comments.count { !it.resolved }
+        val open = comments.count { !it.resolved }
         status.text = buildString {
             append("${changes.size} files · $reviewed reviewed")
             if (stale > 0) append(" · $stale stale")
@@ -398,7 +483,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val path = ReviewPaths.relative(project, change)
             val rc = model.find(path)
             val state = rc?.let { model.state(it) } ?: ReviewState.UNREVIEWED
-            val open = store.session.commentsFor(path).count { !it.resolved }
+            val open = model.commentsFor(path).count { !it.resolved }
             if (open > 0) component.append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
             when (state) {
                 ReviewState.REVIEWED -> component.append("  ✓", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, com.intellij.ui.JBColor(0x2E7D32, 0x81C784)))
@@ -415,6 +500,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             icon = if (value.resolved) AllIcons.RunConfigurations.TestPassed else AllIcons.Toolwindows.ToolWindowMessages
             if (value.type.marker.isNotEmpty()) append("[${value.type.marker}] ", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
             append(value.location(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+            if (value.outdated) append("  outdated", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
             append("  ")
             val attrs = if (value.resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES
             append(value.text.lineSequence().first().take(120), attrs)

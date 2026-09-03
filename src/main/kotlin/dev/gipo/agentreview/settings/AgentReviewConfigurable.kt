@@ -2,7 +2,9 @@ package dev.gipo.agentreview.settings
 
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.DialogPanel
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.dsl.builder.bindIntText
+import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
@@ -20,6 +22,7 @@ class AgentReviewConfigurable : BoundConfigurable("Nitpick") {
                 row { checkBox("Include code snippets").bindSelected(s::includeSnippets) }
                 row("Snippet max lines:") { intTextField(1..200).bindIntText(s::snippetMaxLines) }
                 row { checkBox("Include resolved comments").bindSelected(s::includeResolved) }
+                row { checkBox("Tell the agent to use the MCP tools when available").bindSelected(s::mentionMcp) }
                 row("Review file path (project-relative):") {
                     textField().columns(40).bindText({ s.reviewFilePath ?: "" }, { s.reviewFilePath = it })
                 }
@@ -35,11 +38,9 @@ class AgentReviewConfigurable : BoundConfigurable("Nitpick") {
                 row {
                     checkBox("Open diff on single click in the Nitpick tree").bindSelected(s::openDiffOnSingleClick)
                 }
-                row {
-                    checkBox("Mark file reviewed when its diff is opened").bindSelected(s::autoMarkReviewedOnOpen)
-                }
-                row {
-                    checkBox("Mark file reviewed when its diff is closed").bindSelected(s::autoMarkReviewedOnClose)
+                row("Mark file reviewed automatically:") {
+                    comboBox(AutoMark.entries, SimpleListCellRenderer.create("") { it.label })
+                        .bindItem({ s.autoMark }, { s.autoMark = it ?: AutoMark.OFF })
                 }
             }
         }

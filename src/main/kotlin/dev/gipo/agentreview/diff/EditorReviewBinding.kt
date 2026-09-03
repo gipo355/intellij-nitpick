@@ -16,8 +16,10 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.ui.JBColor
 import dev.gipo.agentreview.model.Comment
+import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.store.ReviewStore
 import javax.swing.Icon
@@ -52,9 +54,9 @@ class EditorReviewBinding(
         editor.putUserData(KEY, this)
         Disposer.register(parent, this)
         project.messageBus.connect(this).subscribe(ReviewListener.TOPIC, object : ReviewListener {
-            override fun sessionChanged(session: ReviewSession) = render(session)
+            override fun sessionChanged(session: ReviewSession) = render()
         })
-        render(store.session)
+        render()
         AddCommentGutterHover(editor, this) { line -> addCommentAt(line) }
     }
 
@@ -65,29 +67,48 @@ class EditorReviewBinding(
         val snippet = if (editorLine < doc.lineCount) doc.getText(com.intellij.openapi.util.TextRange(doc.getLineStartOffset(editorLine), doc.getLineEndOffset(editorLine))) else ""
         editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(editorLine, 0))
         CommentEditorPopup.showAtCaret(project, editor, dev.gipo.agentreview.model.CommentType.NOTE, "") { text, type ->
-            store.addComment(Comment(path = path, side = side, startLine = line, endLine = line, type = type, text = text, snippet = snippet))
+            store.addComment(Comment(path = path, side = side, startLine = line, endLine = line, type = type, text = text, snippet = snippet, contentHash = contentHash(side)))
         }
     }
 
-    fun render(session: ReviewSession = store.session) {
+    /** Hash of the side's file as the scope model sees it, else of this editor's document. */
+    fun contentHash(side: Side): String? {
+        val rc = ReviewChangesModel.getInstance(project).find(path)
+        return when {
+            rc != null -> if (side == Side.NEW) rc.hash else rc.beforeHash
+            side == primarySide -> ContentHash.of(editor.document.charsSequence)
+            else -> null
+        }
+    }
+
+    fun render() {
         if (editor.isDisposed) return
         clear()
         consumePendingScroll()
-        val comments = session.commentsFor(path).filter { it.startLine != null }
-        for (c in comments) {
-            val start = mapper.toEditor(c.side, c.startLine!!) ?: continue
-            val end = mapper.toEditor(c.side, c.endLine ?: c.startLine!!) ?: start
-            val doc = editor.document
+        val doc = editor.document
+        for (c in ReviewChangesModel.getInstance(project).commentsFor(path)) {
+            if (c.outdated) continue
+            val startLine = c.startLine
+            if (startLine == null) {
+                // File-level card above line 1, on the NEW side only.
+                if (primarySide == Side.NEW) addInlay(0, c)
+                continue
+            }
+            val start = mapper.toEditor(c.side, startLine) ?: continue
+            val end = mapper.toEditor(c.side, c.endLine ?: startLine) ?: start
             if (start >= doc.lineCount) continue
             val endClamped = end.coerceIn(start, doc.lineCount - 1)
             highlight(start, endClamped, c)
-            val offset = doc.getLineEndOffset(endClamped)
-            val panel = CommentInlayPanel(project, c) { rerender() }
-            val props = EditorEmbeddedComponentManager.Properties(
-                EditorEmbeddedComponentManager.ResizePolicy.none(), null, true, false, 0, offset,
-            )
-            EditorEmbeddedComponentManager.getInstance().addComponent(editor, panel, props)?.let { inlays += it }
+            addInlay(doc.getLineEndOffset(endClamped), c)
         }
+    }
+
+    private fun addInlay(offset: Int, c: Comment) {
+        val panel = CommentInlayPanel(project, c) { rerender() }
+        val props = EditorEmbeddedComponentManager.Properties(
+            EditorEmbeddedComponentManager.ResizePolicy.none(), null, true, false, 0, offset,
+        )
+        EditorEmbeddedComponentManager.getInstance().addComponent(editor, panel, props)?.let { inlays += it }
     }
 
     private fun rerender() = render()

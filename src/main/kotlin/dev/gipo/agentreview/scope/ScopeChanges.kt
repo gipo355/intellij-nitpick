@@ -5,11 +5,11 @@ import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.ChangesUtil
+import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.CurrentContentRevision
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
-import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import git4idea.GitContentRevision
@@ -84,14 +84,11 @@ object ScopeChanges {
         }
     }
 
-    /** Hash of the "after" side; null when the file was deleted. */
-    fun afterHash(change: Change): String? {
-        val content = try {
-            change.afterRevision?.content
-        } catch (e: Exception) {
-            null
-        } ?: return null
-        return ContentHash.of(content)
+    /** Content of one side, null when absent or unreadable. */
+    fun content(rev: ContentRevision?): CharSequence? = try {
+        rev?.content
+    } catch (e: Exception) {
+        null
     }
 }
 
