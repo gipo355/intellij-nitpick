@@ -59,6 +59,13 @@ diffs inline, mark files reviewed, hand the review to any agent.
 - One `ReviewSession` per scope key (`Scope.key()`), all in `ReviewStorage`,
   persisted as JSON in workspace.xml via `ReviewStore`. Legacy single-session
   JSON (no `sessions` key) still loads.
+- Comments are project-wide in `ReviewStorage.comments`, anchored by path,
+  side, line, `contentHash` and `snippet`. `CommentPlacer` places them per
+  scope (same line, relocated by unique snippet match, or `outdated`). Read
+  them through `ReviewChangesModel.comments()`, never from sessions.
+  Pre-0.2.1 per-session comments are migrated on load.
+- Sessions hold scope, reviewed marks and notes. Marks carry over between
+  sessions by hash at refresh.
 - Reviewed marks are `path -> content hash` of the NEW side. Empty string means
   "reviewed, hash unknown" and never goes stale.
 - Paths are project-relative; `ReviewPaths.matches` tolerates differing roots.
