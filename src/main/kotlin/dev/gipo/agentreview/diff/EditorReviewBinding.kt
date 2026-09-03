@@ -73,21 +73,29 @@ class EditorReviewBinding(
         if (editor.isDisposed) return
         clear()
         consumePendingScroll()
-        val comments = session.commentsFor(path).filter { it.startLine != null }
-        for (c in comments) {
-            val start = mapper.toEditor(c.side, c.startLine!!) ?: continue
-            val end = mapper.toEditor(c.side, c.endLine ?: c.startLine!!) ?: start
-            val doc = editor.document
+        val doc = editor.document
+        for (c in session.commentsFor(path)) {
+            val startLine = c.startLine
+            if (startLine == null) {
+                // File-level card above line 1, on the NEW side only.
+                if (primarySide == Side.NEW) addInlay(0, c)
+                continue
+            }
+            val start = mapper.toEditor(c.side, startLine) ?: continue
+            val end = mapper.toEditor(c.side, c.endLine ?: startLine) ?: start
             if (start >= doc.lineCount) continue
             val endClamped = end.coerceIn(start, doc.lineCount - 1)
             highlight(start, endClamped, c)
-            val offset = doc.getLineEndOffset(endClamped)
-            val panel = CommentInlayPanel(project, c) { rerender() }
-            val props = EditorEmbeddedComponentManager.Properties(
-                EditorEmbeddedComponentManager.ResizePolicy.none(), null, true, false, 0, offset,
-            )
-            EditorEmbeddedComponentManager.getInstance().addComponent(editor, panel, props)?.let { inlays += it }
+            addInlay(doc.getLineEndOffset(endClamped), c)
         }
+    }
+
+    private fun addInlay(offset: Int, c: Comment) {
+        val panel = CommentInlayPanel(project, c) { rerender() }
+        val props = EditorEmbeddedComponentManager.Properties(
+            EditorEmbeddedComponentManager.ResizePolicy.none(), null, true, false, 0, offset,
+        )
+        EditorEmbeddedComponentManager.getInstance().addComponent(editor, panel, props)?.let { inlays += it }
     }
 
     private fun rerender() = render()

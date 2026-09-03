@@ -2,10 +2,13 @@ package dev.gipo.agentreview.actions
 
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.diff.tools.util.DiffDataKeys
+import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.project.DumbAware
@@ -22,6 +25,7 @@ import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.store.ReviewStore
 import dev.gipo.agentreview.ui.Notifications
+import javax.swing.JComponent
 
 private fun AnActionEvent.binding(): EditorReviewBinding? {
     val editor = getData(DiffDataKeys.CURRENT_EDITOR) ?: getData(CommonDataKeys.EDITOR) ?: return null
@@ -33,7 +37,33 @@ internal fun AnActionEvent.reviewPath(): String? {
     binding()?.let { return it.path }
     val project = project ?: return null
     getData(DiffDataKeys.DIFF_REQUEST)?.getUserData(ChangeDiffRequestProducer.CHANGE_KEY)?.let { return ReviewPaths.relative(project, it) }
+    getData(VcsDataKeys.CHANGES)?.firstOrNull()?.let { return ReviewPaths.relative(project, it) }
     return null
+}
+
+/** One child per comment of the file under the cursor; opens the editor popup. */
+class EditFileCommentsGroup : ActionGroup("Edit Comment", true), DumbAware {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = getChildren(e).isNotEmpty()
+    }
+
+    override fun getChildren(e: AnActionEvent?): Array<AnAction> {
+        val project = e?.project ?: return emptyArray()
+        val path = e.reviewPath() ?: return emptyArray()
+        val comments = ReviewStore.getInstance(project).session.commentsFor(path)
+        return comments.map { c ->
+            object : AnAction("${c.location()}  ${c.text.lineSequence().first().take(60)}"), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val anchor = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) as? JComponent ?: return
+                    CommentEditorPopup.show(project, anchor, c.type, c.text) { text, type ->
+                        ReviewStore.getInstance(project).updateComment(c.id) { it.copy(text = text, type = type) }
+                    }
+                }
+            }
+        }.toTypedArray()
+    }
 }
 
 abstract class DiffReviewAction : AnAction(), DumbAware {
@@ -78,7 +108,13 @@ class AddFileCommentAction : DiffReviewAction() {
 
 class ToggleReviewedAction : DiffReviewAction() {
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project != null && e.reviewPath() != null
+        val project = e.project
+        val path = e.reviewPath()
+        e.presentation.isEnabledAndVisible = project != null && path != null
+        if (project == null || path == null) return
+        val model = ReviewChangesModel.getInstance(project)
+        val reviewed = model.find(path)?.let { model.state(it) } == ReviewState.REVIEWED
+        e.presentation.text = if (reviewed) "Unmark Reviewed" else "Mark Reviewed"
     }
 
     override fun actionPerformed(e: AnActionEvent) {

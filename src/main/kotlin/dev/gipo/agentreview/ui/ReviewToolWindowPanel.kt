@@ -80,7 +80,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private val store = ReviewStore.getInstance(project)
     private val model = ReviewChangesModel.getInstance(project)
-    private val browser = SimpleChangesBrowser(project, false, false)
+    private val browser = object : SimpleChangesBrowser(project, false, false) {
+        // Called from the super constructor: no instance state allowed here.
+        override fun createPopupMenuActions(): List<AnAction> =
+            super.createPopupMenuActions() + Separator.getInstance() + ActionManager.getInstance().getAction("AgentReview.TreePopup")
+    }
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
     private val status = JBLabel()
@@ -234,6 +238,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(object : AnAction("Toggle Reviewed", "Space also toggles the selected file", AllIcons.Actions.Checked), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
+            add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
             add(Separator.getInstance())
             add(ActionManager.getInstance().getAction("AgentReview.CopyMarkdown"))
             add(ActionManager.getInstance().getAction("AgentReview.SendToTerminal"))
@@ -267,7 +272,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             })
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("AgentReviewToolbar", group, true)
-        toolbar.targetComponent = this
+        toolbar.targetComponent = browser.viewer
         return toolbar.component
     }
 

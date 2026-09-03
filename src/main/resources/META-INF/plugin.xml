@@ -69,9 +69,11 @@
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift C"/>
             </action>
             <action id="AgentReview.AddFileComment" class="dev.gipo.agentreview.actions.AddFileCommentAction"
-                    text="Add File Comment" description="Comment on the whole file">
+                    text="Add File Comment" description="Comment on the whole file" icon="AllIcons.FileTypes.Text">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift F"/>
             </action>
+            <group id="AgentReview.EditFileComments" class="dev.gipo.agentreview.actions.EditFileCommentsGroup"
+                   text="Edit Comment" popup="true"/>
             <action id="AgentReview.ToggleReviewed" class="dev.gipo.agentreview.actions.ToggleReviewedAction"
                     text="Toggle File Reviewed" description="Mark or unmark this file as reviewed" icon="AllIcons.Actions.Checked">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift R"/>
@@ -108,10 +110,17 @@
         <group id="AgentReview.DiffToolbar">
             <reference ref="AgentReview.ToggleReviewed"/>
             <reference ref="AgentReview.AddComment"/>
+            <reference ref="AgentReview.AddFileComment"/>
             <reference ref="AgentReview.PrevUnreviewed"/>
             <reference ref="AgentReview.NextUnreviewed"/>
             <reference ref="AgentReview.SendGroup"/>
             <add-to-group group-id="Diff.ViewerToolbar" anchor="last"/>
+        </group>
+
+        <group id="AgentReview.TreePopup">
+            <reference ref="AgentReview.ToggleReviewed"/>
+            <reference ref="AgentReview.AddFileComment"/>
+            <reference ref="AgentReview.EditFileComments"/>
         </group>
 
         <action id="AgentReview.ReviewCommit" class="dev.gipo.agentreview.actions.ReviewCommitAction"
