@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ApplicationManager
@@ -88,8 +89,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
     private val status = JBLabel()
-    private val notes = JBTextArea(2, 20)
+    private val notes = JBTextArea(6, 20)
     private var suppressNotes = false
+    private var shown: List<String> = emptyList()
 
     init {
         Disposer.register(parent, this)
@@ -192,15 +194,19 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             }
         })
 
-        val bottom = JPanel(BorderLayout()).apply {
+        val commentsPane = JPanel(BorderLayout()).apply {
             add(JBLabel("Comments").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
             add(JBScrollPane(commentsList), BorderLayout.CENTER)
-            add(JPanel(BorderLayout()).apply {
-                add(JBLabel("Notes").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
-                add(JBScrollPane(notes), BorderLayout.CENTER)
-            }, BorderLayout.SOUTH)
         }
-        val splitter = OnePixelSplitter(true, 0.55f).apply {
+        val notesPane = JPanel(BorderLayout()).apply {
+            add(JBLabel("Notes for the agent").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
+            add(JBScrollPane(notes), BorderLayout.CENTER)
+        }
+        val bottom = OnePixelSplitter(true, "Nitpick.notesSplit", 0.6f).apply {
+            firstComponent = commentsPane
+            secondComponent = notesPane
+        }
+        val splitter = OnePixelSplitter(true, "Nitpick.treeSplit", 0.5f).apply {
             firstComponent = browser
             secondComponent = bottom
         }
@@ -219,7 +225,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         bus.subscribe(ChangesListener.TOPIC, object : ChangesListener {
             override fun changesUpdated(changes: List<ReviewedChange>) {
-                browser.setChangesToDisplay(changes.map { it.change })
+                shown = emptyList()
                 refreshUi()
             }
         })
@@ -239,6 +245,14 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
             add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
+            add(object : ToggleAction("Hide Reviewed Files", "Show only unreviewed and changed files", AllIcons.Actions.ToggleVisibility), DumbAware {
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.hideReviewedFiles
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    AgentReviewSettings.getInstance().state.hideReviewedFiles = state
+                    showChanges()
+                }
+            })
             add(Separator.getInstance())
             add(ActionManager.getInstance().getAction("AgentReview.CopyMarkdown"))
             add(ActionManager.getInstance().getAction("AgentReview.SendToTerminal"))
@@ -314,8 +328,19 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         )
     }
 
+    /** Reviewed files drop out when the toggle is on. Stale files stay. */
+    private fun showChanges() {
+        val hide = AgentReviewSettings.getInstance().state.hideReviewedFiles
+        val visible = model.changes.filter { !hide || model.state(it) != ReviewState.REVIEWED }
+        val paths = visible.map { it.path }
+        if (paths == shown) return
+        shown = paths
+        browser.setChangesToDisplay(visible.map { it.change })
+    }
+
     private fun refreshUi() {
         val session = store.session
+        showChanges()
         browser.viewer.repaint()
         commentsModel.clear()
         session.comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }

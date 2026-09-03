@@ -28,6 +28,7 @@ class AgentReviewState : BaseState() {
     var autoMarkReviewedOnClose by property(false)
     var autoMarkReviewedOnOpen by property(false)
     var openDiffOnSingleClick by property(false)
+    var hideReviewedFiles by property(false)
 }
 
 @State(name = "AgentReviewSettings", storages = [Storage("agentReview.xml")])
