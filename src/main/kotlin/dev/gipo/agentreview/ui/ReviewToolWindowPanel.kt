@@ -34,6 +34,12 @@ import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
 import com.intellij.openapi.vcs.changes.ui.SimpleChangesBrowser
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
+import com.intellij.openapi.fileChooser.FileChooserFactory
+import com.intellij.openapi.fileChooser.FileSaverDescriptor
+import com.intellij.openapi.vfs.VirtualFile
+import dev.gipo.agentreview.export.SessionFile
 import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
@@ -259,6 +265,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(ActionManager.getInstance().getAction("AgentReview.WriteFile"))
             add(ActionManager.getInstance().getAction("AgentReview.SendGroup"))
             add(Separator.getInstance())
+            add(object : AnAction("Export Session…", "Save this scope's marks, notes and comments to a JSON file", AllIcons.ToolbarDecorator.Export), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = exportSession()
+            })
+            add(object : AnAction("Import Session…", "Load a session exported by Nitpick", AllIcons.ToolbarDecorator.Import), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = importSession()
+            })
+            add(Separator.getInstance())
             add(object : AnAction("Reset Reviewed Marks", "Unmark every file, keep comments", AllIcons.Actions.Rollback), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = store.update { it.copy(reviewed = emptyMap()) }
             })
@@ -326,6 +339,37 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             Separator.getInstance(),
             action("Delete", AllIcons.Actions.GC) { store.removeComment(it.id) },
         )
+    }
+
+    private fun exportSession() {
+        val descriptor = FileSaverDescriptor("Export Review Session", "Marks, notes and comments of ${store.session.scope.describe()}", "json")
+        val wrapper = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project).save(null as VirtualFile?, "nitpick-review.json") ?: return
+        val branch = try {
+            ScopeChanges.currentBranch(project)
+        } catch (e: Exception) {
+            null
+        }
+        // Original comments, not placed ones: lines stay anchored to their own hash.
+        val ids = model.comments().map { it.id }.toSet()
+        val comments = store.comments.filter { it.id in ids }
+        try {
+            wrapper.file.writeText(SessionFile.encode(store.session, comments, branch))
+            Notifications.info(project, "Session exported", wrapper.file.path)
+        } catch (e: Exception) {
+            Notifications.warn(project, "Cannot write session file", e.message ?: e.toString())
+        }
+    }
+
+    private fun importSession() {
+        val vf = FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFileDescriptor("json"), project, null) ?: return
+        val file = try {
+            SessionFile.decode(String(vf.contentsToByteArray()))
+        } catch (e: Exception) {
+            Notifications.warn(project, "Not a Nitpick session file", e.message ?: e.toString())
+            return
+        }
+        store.importSession(file.session, file.comments)
+        model.refresh()
     }
 
     /** Reviewed files drop out when the toggle is on. Stale files stay. */
