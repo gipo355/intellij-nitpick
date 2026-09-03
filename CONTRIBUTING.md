@@ -3,7 +3,8 @@
 ## Requirements
 
 - JDK 21+ (the build uses a 21 toolchain).
-- A local IntelliJ IDEA 2026.2+ install. `gradle.properties` points `ideaHome`
+- A local IntelliJ IDEA 2026.2+ install (optional; without it Gradle downloads
+  IU 2026.2, about 1.5 GB). `gradle.properties` points `ideaHome`
   at the Toolbox path; override with `-PideaHome=/path/to/ide`.
 
 ## Build and test
@@ -69,8 +70,19 @@ Repeat the same steps with a new zip to update. Uninstall from the Installed tab
 future builds. The AI Assistant channel uses an internal API and is the most
 likely thing to break on a major IDE update.
 
-Without Marketplace, attach the zip to a GitHub release. Users install it from
-disk as above.
+## GitHub releases
+
+`.github/workflows/release.yml` runs on every push to `main`: it builds the
+plugin against a downloaded IntelliJ IDEA Ultimate (no local IDE on CI) and
+attaches `nitpick-<version>.zip` to the release tagged `v<version>`. The
+version comes from `build.gradle.kts`. A push without a version bump moves the
+tag and replaces the zip on the existing release, so the latest release always
+matches `main`. Users download the zip from Releases and install it from disk
+as above.
+
+The IDE version CI compiles against defaults to `2026.2`; pass
+`-PplatformVersion=2026.2.1` (or set it in the workflow) to change it. Locally
+the build still prefers `ideaHome` when that directory exists.
 
 ## Layout
 

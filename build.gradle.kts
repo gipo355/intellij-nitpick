@@ -12,9 +12,15 @@ repositories {
     intellijPlatform { defaultRepositories() }
 }
 
+// Local IDE from gradle.properties when the directory exists (dev machine), otherwise a
+// downloaded IU so CI can build. Override with -PplatformVersion=2026.2.1.
+val ideaHome = providers.gradleProperty("ideaHome").map { file(it) }
+val hasLocalIde = ideaHome.map { it.isDirectory }.getOrElse(false)
+val platformVersion = providers.gradleProperty("platformVersion").getOrElse("2026.2")
+
 dependencies {
     intellijPlatform {
-        local(providers.gradleProperty("ideaHome"))
+        if (hasLocalIde) local(providers.gradleProperty("ideaHome")) else intellijIdeaUltimate(platformVersion)
         bundledPlugin("Git4Idea")
         bundledPlugin("org.jetbrains.plugins.terminal")
         bundledPlugin("com.intellij.mcpServer")
@@ -46,6 +52,6 @@ intellijPlatform {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
     pluginVerification {
-        ides { local(providers.gradleProperty("ideaHome").map { file(it) }) }
+        ides { if (hasLocalIde) local(ideaHome) else recommended() }
     }
 }
