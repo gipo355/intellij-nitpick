@@ -10,9 +10,13 @@ data class ExportOptions(
     val snippetMaxLines: Int = 12,
     val includeResolved: Boolean = false,
     val branch: String? = null,
+    val mcpHint: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_INTRO = "I reviewed your code and have the following comments. Please address them."
+        const val MCP_HINT = "If you have the agent_review MCP tools: call agent_review_list_comments for ids, " +
+            "fix each item, then agent_review_resolve_comment with a one-line reply. " +
+            "Ask with agent_review_add_comment when a comment is unclear. Otherwise reply here with what you changed per item."
     }
 }
 
@@ -30,6 +34,7 @@ object MarkdownExporter {
         sb.append("Scope: ").append(session.scope.describe())
         options.branch?.let { sb.append(" on `").append(it).append('`') }
         sb.append("\n\n")
+        if (options.mcpHint) sb.append(ExportOptions.MCP_HINT).append("\n\n")
 
         if (located.isEmpty() && reviewLevel.isEmpty() && session.notes.isBlank()) {
             sb.append("No comments.\n")

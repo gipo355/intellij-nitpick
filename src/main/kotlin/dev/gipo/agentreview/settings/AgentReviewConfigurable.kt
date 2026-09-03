@@ -22,6 +22,7 @@ class AgentReviewConfigurable : BoundConfigurable("Nitpick") {
                 row { checkBox("Include code snippets").bindSelected(s::includeSnippets) }
                 row("Snippet max lines:") { intTextField(1..200).bindIntText(s::snippetMaxLines) }
                 row { checkBox("Include resolved comments").bindSelected(s::includeResolved) }
+                row { checkBox("Tell the agent to use the MCP tools when available").bindSelected(s::mentionMcp) }
                 row("Review file path (project-relative):") {
                     textField().columns(40).bindText({ s.reviewFilePath ?: "" }, { s.reviewFilePath = it })
                 }

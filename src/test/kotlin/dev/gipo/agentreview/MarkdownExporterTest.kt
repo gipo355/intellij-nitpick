@@ -7,6 +7,7 @@ import dev.gipo.agentreview.model.CommentType
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.Side
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,7 +29,7 @@ class MarkdownExporterTest {
 
     @Test
     fun exportsTuicrCompatibleMarkdown() {
-        val out = MarkdownExporter.export(session, ExportOptions(branch = "main"))
+        val out = MarkdownExporter.export(session, ExportOptions(branch = "main", mcpHint = false))
         val expected = """
             |I reviewed your code and have the following comments. Please address them.
             |
@@ -65,5 +66,14 @@ class MarkdownExporterTest {
     fun emptySession() {
         val out = MarkdownExporter.export(ReviewSession())
         assertTrue(out, out.endsWith("No comments.\n"))
+    }
+
+    @Test
+    fun mentionsMcpToolsWhenEnabled() {
+        val out = MarkdownExporter.export(session, ExportOptions(mcpHint = true))
+        assertTrue(out, out.contains("agent_review_list_comments"))
+        assertTrue(out, out.contains("agent_review_resolve_comment"))
+        val silent = MarkdownExporter.export(session, ExportOptions(mcpHint = false))
+        assertFalse(silent, silent.contains("agent_review"))
     }
 }

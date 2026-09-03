@@ -15,6 +15,7 @@ class AgentReviewState : BaseState() {
     var includeSnippets by property(true)
     var snippetMaxLines by property(12)
     var includeResolved by property(false)
+    var mentionMcp by property(true)
     var terminalTabPattern by string(".*")
     var terminalAutoSubmit by property(false)
     var reviewFilePath by string(".agent-review/REVIEW.md")
@@ -48,6 +49,7 @@ class AgentReviewSettings : SimplePersistentStateComponent<AgentReviewState>(Age
         snippetMaxLines = state.snippetMaxLines,
         includeResolved = state.includeResolved,
         branch = branch,
+        mcpHint = state.mentionMcp,
     )
 
     companion object {
