@@ -6,7 +6,10 @@ import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.ReviewState
+import dev.gipo.agentreview.model.Scope
+import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.settings.FileFilter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,6 +24,23 @@ class ModelTest {
         assertEquals("a.kt:~4-~5", Comment(path = "a.kt", side = Side.OLD, startLine = 4, endLine = 5).location())
         assertEquals("a.kt", Comment(path = "a.kt").location())
         assertEquals("review", Comment().location())
+    }
+
+    @Test
+    fun scopeShortLabel() {
+        assertEquals("Uncommitted", Scope(ScopeKind.UNCOMMITTED).shortLabel())
+        assertEquals("Staged", Scope(ScopeKind.STAGED).shortLabel())
+        assertEquals("6702505d..7a11a982", Scope(ScopeKind.RANGE, base = "6702505d1234", head = "7a11a982abcd").shortLabel())
+        assertEquals("main..HEAD", Scope(ScopeKind.RANGE, base = "main", head = "HEAD").shortLabel())
+        assertEquals("main...HEAD", Scope(ScopeKind.RANGE, base = "abcdef0123", head = "HEAD", baseLabel = "merge-base(main)").shortLabel())
+        assertEquals("commit 6702505d", Scope(ScopeKind.COMMIT, head = "6702505d1234").shortLabel())
+    }
+
+    @Test
+    fun fileFilterTreatsStaleAsUnreviewed() {
+        assertTrue(ReviewState.entries.all { FileFilter.ALL.shows(it) })
+        assertEquals(listOf(ReviewState.UNREVIEWED, ReviewState.STALE), ReviewState.entries.filter { FileFilter.UNREVIEWED.shows(it) })
+        assertEquals(listOf(ReviewState.REVIEWED), ReviewState.entries.filter { FileFilter.REVIEWED.shows(it) })
     }
 
     @Test

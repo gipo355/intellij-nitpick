@@ -7,8 +7,22 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import dev.gipo.agentreview.export.ExportOptions
+import dev.gipo.agentreview.model.ReviewState
 
 enum class AutoMark(val label: String) { OFF("Off"), ON_OPEN("When diff opens"), ON_CLOSE("When diff closes") }
+
+/** Tree filter. Stale files count as unreviewed. */
+enum class FileFilter(val label: String) {
+    ALL("All Files"),
+    UNREVIEWED("Unreviewed Only"),
+    REVIEWED("Reviewed Only");
+
+    fun shows(state: ReviewState): Boolean = when (this) {
+        ALL -> true
+        UNREVIEWED -> state != ReviewState.REVIEWED
+        REVIEWED -> state == ReviewState.REVIEWED
+    }
+}
 
 class AgentReviewState : BaseState() {
     var intro by string(ExportOptions.DEFAULT_INTRO)
@@ -28,7 +42,12 @@ class AgentReviewState : BaseState() {
     var autoMarkReviewedOnClose by property(false)
     var autoMarkReviewedOnOpen by property(false)
     var openDiffOnSingleClick by property(false)
+    /** Pre-0.3.0 flag, read once for migration. */
     var hideReviewedFiles by property(false)
+    var fileFilterName by string(FileFilter.ALL.name)
+    var fileFilter: FileFilter
+        get() = FileFilter.entries.firstOrNull { it.name == fileFilterName } ?: FileFilter.ALL
+        set(value) { fileFilterName = value.name }
 }
 
 @State(name = "AgentReviewSettings", storages = [Storage("agentReview.xml")])
@@ -42,6 +61,8 @@ class AgentReviewSettings : SimplePersistentStateComponent<AgentReviewState>(Age
         }
         state.autoMarkReviewedOnOpen = false
         state.autoMarkReviewedOnClose = false
+        if (state.hideReviewedFiles) state.fileFilter = FileFilter.UNREVIEWED
+        state.hideReviewedFiles = false
     }
 
     fun exportOptions(branch: String?): ExportOptions = ExportOptions(

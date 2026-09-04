@@ -50,6 +50,7 @@ import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.SimpleColoredComponent
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -72,6 +73,7 @@ import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ReviewedChange
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.settings.AgentReviewSettings
+import dev.gipo.agentreview.settings.FileFilter
 import dev.gipo.agentreview.store.ReviewStore
 import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
@@ -257,18 +259,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             })
             add(ActionManager.getInstance().getAction("AgentReview.PrevUnreviewed"))
             add(ActionManager.getInstance().getAction("AgentReview.NextUnreviewed"))
-            add(object : AnAction("Toggle Reviewed", "Space also toggles the selected file", AllIcons.Actions.Checked), DumbAware {
+            add(object : AnAction("Toggle Reviewed", "Space also toggles the selection. A folder marks all files under it, or unmarks them when all are reviewed", AllIcons.Actions.Checked), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
             add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
-            add(object : ToggleAction("Hide Reviewed Files", "Show only unreviewed and changed files", AllIcons.Actions.ToggleVisibility), DumbAware {
-                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-                override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.hideReviewedFiles
-                override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    AgentReviewSettings.getInstance().state.hideReviewedFiles = state
-                    showChanges()
-                }
-            })
+            add(FilterGroup())
             add(Separator.getInstance())
             add(ActionManager.getInstance().getAction("AgentReview.CopyMarkdown"))
             add(ActionManager.getInstance().getAction("AgentReview.SendToTerminal"))
@@ -382,14 +377,17 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         model.refresh()
     }
 
-    /** Reviewed files drop out when the toggle is on. Stale files stay. */
     private fun showChanges() {
-        val hide = AgentReviewSettings.getInstance().state.hideReviewedFiles
-        val visible = model.changes.filter { !hide || model.state(it) != ReviewState.REVIEWED }
+        val filter = AgentReviewSettings.getInstance().state.fileFilter
+        val visible = model.changes.filter { filter.shows(model.state(it)) }
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
-        browser.setChangesToDisplay(visible.mapNotNull { it.change })
+        val changes = visible.mapNotNull { it.change }
+        // Rebuilding the tree drops the selection. Keep whatever is still visible.
+        val selected = browser.selectedChanges.filter { it in changes }
+        browser.setChangesToDisplay(changes)
+        if (selected.isNotEmpty()) browser.viewer.setSelectedChanges(selected)
     }
 
     private fun refreshUi() {
@@ -418,10 +416,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
     }
 
+    /** One file toggles. Several (a folder) align: all reviewed unmarks, anything else marks all. */
     private fun toggleSelectedReviewed() {
-        for (change in browser.selectedChanges) {
-            ToggleReviewedAction.toggleReviewed(project, ReviewPaths.relative(project, change), null)
-        }
+        val paths = browser.selectedChanges.map { ReviewPaths.relative(project, it) }
+        if (paths.size == 1) ToggleReviewedAction.toggleReviewed(project, paths[0], null)
+        else if (paths.isNotEmpty()) ToggleReviewedAction.alignReviewed(project, paths)
     }
 
     private fun open(c: Comment) {
@@ -508,11 +507,39 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
     }
 
+    /** All / unreviewed / reviewed, as radio items under one eye icon. */
+    private inner class FilterGroup : DefaultActionGroup("Filter Files", true), DumbAware {
+        init {
+            templatePresentation.icon = AllIcons.Actions.ToggleVisibility
+            for (f in FileFilter.entries) {
+                add(object : ToggleAction(f.label), DumbAware {
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                    override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.fileFilter == f
+                    override fun setSelected(e: AnActionEvent, state: Boolean) {
+                        if (!state) return
+                        AgentReviewSettings.getInstance().state.fileFilter = f
+                        showChanges()
+                    }
+                })
+            }
+        }
+
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+        override fun update(e: AnActionEvent) {
+            val f = AgentReviewSettings.getInstance().state.fileFilter
+            e.presentation.description = "Filter: ${f.label}"
+            e.presentation.icon = if (f == FileFilter.ALL) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
+        }
+    }
+
     private inner class ScopeCombo : ComboBoxAction(), DumbAware {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
         override fun update(e: AnActionEvent) {
-            e.presentation.text = store.session.scope.kind.label
+            val scope = store.session.scope
+            e.presentation.text = scope.shortLabel()
+            e.presentation.description = "Reviewing ${scope.describe()}"
         }
 
         override fun createPopupActionGroup(button: JComponent, context: com.intellij.openapi.actionSystem.DataContext): DefaultActionGroup {
@@ -545,7 +572,33 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     setScope(Scope(ScopeKind.COMMIT, head = hash.trim()))
                 }
             })
+            val saved = store.savedSessions()
+            if (saved.size > 1) {
+                group.add(Separator.create("Saved Sessions"))
+                for (s in saved) {
+                    group.add(object : ToggleAction("${s.scope.describe()} · ${s.reviewed.size} reviewed"), DumbAware {
+                        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                        override fun isSelected(e: AnActionEvent): Boolean = s.scope.key() == store.currentKey
+                        override fun setSelected(e: AnActionEvent, state: Boolean) { if (state) setScope(s.scope) }
+                    })
+                }
+                group.add(object : AnAction("Delete Session…"), DumbAware {
+                    override fun actionPerformed(e: AnActionEvent) = chooseSessionToDelete(e)
+                })
+            }
             return group
+        }
+
+        private fun chooseSessionToDelete(e: AnActionEvent) {
+            val component = e.inputEvent?.component ?: this@ReviewToolWindowPanel
+            val others = store.savedSessions().drop(1)
+            JBPopupFactory.getInstance().createPopupChooserBuilder(others)
+                .setTitle("Delete Session")
+                .setRenderer(SimpleListCellRenderer.create("") { "${it.scope.describe()} · ${it.reviewed.size} reviewed" })
+                .setNamerForFiltering { it.scope.describe() }
+                .setItemChosenCallback { store.forgetSession(it.scope.key()) }
+                .createPopup()
+                .showUnderneathOf(component)
         }
 
         private fun setScope(scope: Scope) {

@@ -45,6 +45,13 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
     /** Other sessions' reviewed marks, for hash carry-over. */
     fun otherSessions(): List<ReviewSession> = storage.sessions.filterKeys { it != storage.currentKey }.values.toList()
 
+    /** Current session first, then the non-empty others newest first. */
+    fun savedSessions(): List<ReviewSession> {
+        val s = storage
+        val others = s.sessions.filter { (k, v) -> k != s.currentKey && !v.isEmpty }.values.reversed().sortedByDescending { it.updatedAt }
+        return listOf(session) + others
+    }
+
     override fun getState(): State = State().also {
         val current = storage.currentKey
         val kept = storage.sessions
@@ -151,6 +158,15 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
 
     /** Drops every session and comment. Scope selection is kept. */
     fun clearAll() = updateStorage { s -> ReviewStorage(mapOf(s.currentKey to ReviewSession(scope = session.scope)), s.currentKey) }
+
+    /** Drops one saved session. The current one stays. Comments are project-wide and are kept. */
+    fun forgetSession(key: String) {
+        synchronized(this) {
+            if (key == storage.currentKey) return
+            storage = storage.copy(sessions = storage.sessions - key)
+        }
+        update { it }
+    }
 
     /** Drops every session except the current one. */
     fun forgetOtherSessions() {
