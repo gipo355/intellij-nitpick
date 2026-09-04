@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "dev.gipo.agentreview"
-version = "0.2.1"
+version = "0.2.1" // x-release-please-version
 
 repositories {
     mavenCentral()
@@ -41,6 +41,8 @@ kotlin {
 
 intellijPlatform {
     pluginConfiguration {
+        // CI passes the GitHub release notes; local builds ship without change notes.
+        changeNotes = providers.environmentVariable("CHANGE_NOTES")
         ideaVersion {
             sinceBuild = "262"
             untilBuild = provider { null }
@@ -48,7 +50,7 @@ intellijPlatform {
     }
     buildSearchableOptions = false
     publishing {
-        // Marketplace token for updates after the first manual upload: export PUBLISH_TOKEN=...
+        // Marketplace token: export PUBLISH_TOKEN=... locally, repository secret in CI.
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
     pluginVerification {

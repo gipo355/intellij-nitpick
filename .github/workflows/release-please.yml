@@ -1,0 +1,19 @@
+# Keeps a release PR open from conventional commits on main. Merging it
+# bumps `version`, updates CHANGELOG.md, tags v<version> and creates the
+# GitHub release, which triggers publish.yml.
+# Uses a PAT: releases created with the default token trigger nothing.
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
