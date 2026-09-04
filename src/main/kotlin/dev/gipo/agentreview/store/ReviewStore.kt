@@ -114,6 +114,13 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
     fun updateComment(id: String, transform: (Comment) -> Comment) =
         updateStorage { s -> s.copy(comments = s.comments.map { if (it.id == id) transform(it) else it }) }
 
+    /** Full id, or a unique prefix of at least 4 chars. */
+    fun findComment(idOrPrefix: String): Comment? {
+        comments.firstOrNull { it.id == idOrPrefix }?.let { return it }
+        if (idOrPrefix.length < 4) return null
+        return comments.filter { it.id.startsWith(idOrPrefix) }.singleOrNull()
+    }
+
     fun removeComment(id: String) = removeComments(setOf(id))
 
     fun removeComments(ids: Collection<String>) = updateStorage { s -> s.copy(comments = s.comments.filterNot { it.id in ids }) }

@@ -2,7 +2,9 @@ package dev.gipo.agentreview
 
 import dev.gipo.agentreview.export.ExportOptions
 import dev.gipo.agentreview.export.MarkdownExporter
+import dev.gipo.agentreview.model.Author
 import dev.gipo.agentreview.model.Comment
+import dev.gipo.agentreview.model.ThreadEntry
 import dev.gipo.agentreview.model.CommentType
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.Side
@@ -46,6 +48,36 @@ class MarkdownExporterTest {
             |- overall fine
             |""".trimMargin()
         assertEquals(expected, out)
+    }
+
+    @Test
+    fun groupedByFile() {
+        val out = MarkdownExporter.export(session, comments, ExportOptions(mcpHint = false, groupByFile = true))
+        val expected = """
+            |### src/auth.rs
+            |1. `(file)` - Consider adding unit tests
+            |2. **[ISSUE]** `:42` `let timeout = 3000;` - Magic number should be a named constant
+            |3. `:50-55` - This block could be refactored
+            |
+            |### src/old.rs
+            |4. `:~12` - why was this removed?
+            |
+            |
+            |Review notes:
+            |- overall fine
+            |""".trimMargin()
+        assertTrue(out, out.endsWith(expected))
+    }
+
+    @Test
+    fun threadsAndWontFix() {
+        val c = Comment(
+            path = "a.kt", startLine = 3, type = CommentType.QUESTION, text = "why?",
+            thread = listOf(ThreadEntry(Author.AGENT, "because X", 10), ThreadEntry(Author.USER, "ok, keep it", 11)),
+            resolved = true, wontFix = true, reply = "kept as is",
+        )
+        val out = MarkdownExporter.export(session, listOf(c), ExportOptions(includeResolved = true, mcpHint = false))
+        assertTrue(out, out.contains("1. **[QUESTION]** `a.kt:3` - why?\n   > **agent:** because X\n   > **reviewer:** ok, keep it\n   _(won't fix: kept as is)_\n"))
     }
 
     @Test

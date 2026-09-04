@@ -67,6 +67,7 @@ import dev.gipo.agentreview.model.ReviewState
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.model.ThreadEntry
 import dev.gipo.agentreview.model.commentOrder
 import dev.gipo.agentreview.scope.ChangesListener
 import dev.gipo.agentreview.scope.ReviewChangesModel
@@ -355,6 +356,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     store.updateComment(c.id) { it.copy(text = text, type = type) }
                 }
             },
+            action("Reply…", AllIcons.Actions.Forward) { c ->
+                CommentEditorPopup.showReply(project, commentsList) { text ->
+                    store.updateComment(c.id) { it.copy(thread = it.thread + ThreadEntry(Author.USER, text)) }
+                }
+            },
             object : AnAction("Resolve", null, AllIcons.RunConfigurations.TestPassed), DumbAware {
                 override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
                 override fun update(e: AnActionEvent) {
@@ -363,8 +369,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     e.presentation.text = if (c?.resolved == true) "Reopen" else "Resolve"
                 }
                 override fun actionPerformed(e: AnActionEvent) {
-                    selected()?.let { c -> store.updateComment(c.id) { it.copy(resolved = !it.resolved) } }
+                    selected()?.let { c -> store.updateComment(c.id) { it.copy(resolved = !it.resolved, wontFix = false) } }
                 }
+            },
+            action("Won't Fix", AllIcons.Actions.Cancel, { !it.wontFix }) { c ->
+                store.updateComment(c.id) { it.copy(resolved = true, wontFix = true) }
             },
             action("Copy Location", AllIcons.Actions.Copy) {
                 CopyPasteManager.getInstance().setContents(java.awt.datatransfer.StringSelection(it.location()))
@@ -407,7 +416,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private fun showChanges() {
         val filter = AgentReviewSettings.getInstance().state.fileFilter
-        val visible = model.changes.filter { filter.shows(model.state(it)) }
+        val commented = if (filter == FileFilter.WITH_COMMENTS) model.comments().filter { !it.isReviewLevel }.map { it.path } else emptyList()
+        val visible = model.changes.filter { rc -> filter.shows(model.state(rc), commented.any { ReviewPaths.matches(it, rc.path) }) }
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
@@ -553,7 +563,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val attrs = if (value.resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES
             append(value.text.lineSequence().first().take(120), attrs)
             if (value.author == Author.AGENT) append("  (agent)", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-            value.reply?.takeIf { it.isNotBlank() }?.let { append("  ↩ ${it.lineSequence().first().take(80)}", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES) }
+            if (value.wontFix) append("  won't fix", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+            val last = value.reply?.takeIf { it.isNotBlank() } ?: value.thread.lastOrNull()?.text
+            last?.let { append("  ↩ ${it.lineSequence().first().take(80)}", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES) }
         }
     }
 

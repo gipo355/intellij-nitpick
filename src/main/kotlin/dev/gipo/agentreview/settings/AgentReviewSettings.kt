@@ -8,6 +8,7 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import dev.gipo.agentreview.export.ExportOptions
 import dev.gipo.agentreview.model.Comment
+import dev.gipo.agentreview.model.CommentType
 import dev.gipo.agentreview.model.ReviewState
 
 enum class AutoMark(val label: String) { OFF("Off"), ON_OPEN("When diff opens"), ON_CLOSE("When diff closes") }
@@ -16,12 +17,14 @@ enum class AutoMark(val label: String) { OFF("Off"), ON_OPEN("When diff opens"),
 enum class FileFilter(val label: String) {
     ALL("All Files"),
     UNREVIEWED("Unreviewed Only"),
-    REVIEWED("Reviewed Only");
+    REVIEWED("Reviewed Only"),
+    WITH_COMMENTS("Has Comments");
 
-    fun shows(state: ReviewState): Boolean = when (this) {
+    fun shows(state: ReviewState, hasComments: Boolean = false): Boolean = when (this) {
         ALL -> true
         UNREVIEWED -> state != ReviewState.REVIEWED
         REVIEWED -> state == ReviewState.REVIEWED
+        WITH_COMMENTS -> hasComments
     }
 }
 
@@ -36,7 +39,7 @@ enum class CommentFilter(val label: String) {
         ALL -> true
         UNRESOLVED -> !c.resolved
         RESOLVED -> c.resolved
-        WITH_REPLY -> !c.reply.isNullOrBlank()
+        WITH_REPLY -> c.hasAgentReply
     }
 }
 
@@ -60,6 +63,11 @@ class AgentReviewState : BaseState() {
     var openDiffOnSingleClick by property(false)
     /** Pre-0.3.0 flag, read once for migration. */
     var hideReviewedFiles by property(false)
+    /** Type preselected for the next new comment. */
+    var lastCommentTypeName by string(CommentType.NOTE.name)
+    var lastCommentType: CommentType
+        get() = CommentType.entries.firstOrNull { it.name == lastCommentTypeName } ?: CommentType.NOTE
+        set(value) { lastCommentTypeName = value.name }
     var commentFilterName by string(CommentFilter.ALL.name)
     var commentFilter: CommentFilter
         get() = CommentFilter.entries.firstOrNull { it.name == commentFilterName } ?: CommentFilter.ALL

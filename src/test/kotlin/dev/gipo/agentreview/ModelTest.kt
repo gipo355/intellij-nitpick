@@ -1,8 +1,11 @@
 package dev.gipo.agentreview
 
 import dev.gipo.agentreview.channels.TerminalPayload
+import dev.gipo.agentreview.export.ContextLines
 import dev.gipo.agentreview.export.JsonExporter
+import dev.gipo.agentreview.model.Author
 import dev.gipo.agentreview.model.Comment
+import dev.gipo.agentreview.model.ThreadEntry
 import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.ReviewState
@@ -12,6 +15,7 @@ import dev.gipo.agentreview.model.Side
 import dev.gipo.agentreview.settings.CommentFilter
 import dev.gipo.agentreview.settings.FileFilter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,6 +46,32 @@ class ModelTest {
         assertTrue(ReviewState.entries.all { FileFilter.ALL.shows(it) })
         assertEquals(listOf(ReviewState.UNREVIEWED, ReviewState.STALE), ReviewState.entries.filter { FileFilter.UNREVIEWED.shows(it) })
         assertEquals(listOf(ReviewState.REVIEWED), ReviewState.entries.filter { FileFilter.REVIEWED.shows(it) })
+    }
+
+    @Test
+    fun fileFilterWithCommentsIgnoresState() {
+        assertTrue(ReviewState.entries.all { FileFilter.WITH_COMMENTS.shows(it, hasComments = true) })
+        assertTrue(ReviewState.entries.none { FileFilter.WITH_COMMENTS.shows(it, hasComments = false) })
+    }
+
+    @Test
+    fun contextLinesAroundRange() {
+        val content = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj"
+        assertEquals(" 9: i\n10: j", ContextLines.around(content, 10, 10, 1))
+        assertEquals("1: a\n2: b\n3: c", ContextLines.around(content, 2, 2, 1))
+        assertEquals("3: c", ContextLines.around(content, 3, 3, 0))
+        assertEquals("", ContextLines.around(content, 50, 50, 2))
+    }
+
+    @Test
+    fun threadActivityAndAgentReply() {
+        val c = Comment(text = "q", createdAt = 5)
+        assertFalse(c.hasAgentReply)
+        assertEquals(5L, c.lastActivity)
+        val replied = c.copy(thread = listOf(ThreadEntry(Author.AGENT, "a", 9)))
+        assertTrue(replied.hasAgentReply)
+        assertEquals(9L, replied.lastActivity)
+        assertTrue(replied in listOf(replied).filter { CommentFilter.WITH_REPLY.shows(it) })
     }
 
     @Test

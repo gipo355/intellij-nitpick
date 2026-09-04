@@ -64,6 +64,14 @@ enum class CommentType(val marker: String) {
 
 enum class Author { USER, AGENT }
 
+/** One message in a comment's conversation. */
+@Serializable
+data class ThreadEntry(
+    val author: Author = Author.AGENT,
+    val text: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 /**
  * Lines are 1-based. Null lines = file-level. Empty path = review-level. Path ending in `/` = folder-level.
  */
@@ -82,6 +90,10 @@ data class Comment(
     val resolved: Boolean = false,
     /** Agent reply set when it resolves the comment. */
     val reply: String? = null,
+    /** Resolved as "won't fix": the agent pushed back instead of changing code. */
+    val wontFix: Boolean = false,
+    /** Replies that leave the comment open, in order. */
+    val thread: List<ThreadEntry> = emptyList(),
     /** Hash of the commented side's file content at creation. Null: never relocated. */
     val contentHash: String? = null,
     /** Session key the comment was written in. Only review-level comments are filtered by it. */
@@ -89,6 +101,9 @@ data class Comment(
     /** Runtime only: the commented text is gone from the file in the current scope. */
     val outdated: Boolean = false,
 ) {
+    val hasAgentReply: Boolean get() = !reply.isNullOrBlank() || thread.any { it.author == Author.AGENT }
+    /** Creation or latest thread message, for "what changed since" polling. */
+    val lastActivity: Long get() = maxOf(createdAt, thread.maxOfOrNull { it.createdAt } ?: 0L)
     val isFileLevel: Boolean get() = path.isNotEmpty() && startLine == null
     val isReviewLevel: Boolean get() = path.isEmpty()
     /** Path ends with `/`: the comment is about a directory. */
