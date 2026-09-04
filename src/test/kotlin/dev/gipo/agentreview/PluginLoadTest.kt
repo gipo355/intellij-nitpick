@@ -48,6 +48,21 @@ class PluginLoadTest : BasePlatformTestCase() {
     }
 }
 
+class FindCommentTest : BasePlatformTestCase() {
+    fun testFullIdOrUniquePrefix() {
+        val store = ReviewStore.getInstance(project)
+        store.clearAll()
+        val a = Comment(id = "abcd1234-1", text = "a")
+        val b = Comment(id = "abcd9999-2", text = "b")
+        store.addComment(a); store.addComment(b)
+        assertEquals("a", store.findComment(a.id)?.text)
+        assertEquals("b", store.findComment("abcd99")?.text)
+        assertNull(store.findComment("abcd"))
+        assertNull(store.findComment("abc"))
+        store.clearAll()
+    }
+}
+
 class AlignReviewedTest : BasePlatformTestCase() {
     fun testAlignMarksAllUnlessAllReviewed() {
         val store = ReviewStore.getInstance(project)

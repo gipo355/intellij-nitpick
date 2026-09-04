@@ -42,6 +42,9 @@ object JsonExporter {
 
     fun session(session: ReviewSession, comments: List<Comment>, includeResolved: Boolean, branch: String?): JsonObject = buildJsonObject {
         put("scope", session.scope.describe())
+        put("scope_kind", session.scope.kind.name.lowercase())
+        put("base", session.scope.base?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("head", session.scope.head?.let { JsonPrimitive(it) } ?: JsonNull)
         put("branch", branch?.let { JsonPrimitive(it) } ?: JsonNull)
         put("notes", session.notes)
         put("reviewed_files", buildJsonArray { session.reviewed.keys.sorted().forEach { add(JsonPrimitive(it)) } })

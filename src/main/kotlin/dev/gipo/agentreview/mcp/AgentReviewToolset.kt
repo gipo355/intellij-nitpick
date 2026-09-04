@@ -30,7 +30,8 @@ class AgentReviewToolset : McpToolset {
         """Get the human's code review of the current changes as Markdown (default) or JSON.
         Call this when the user says they left review comments in the IDE, or asks you to address the review.
         Each comment has a location `path:line` (or `path:start-end`, `~` marks the old side) and text.
-        After fixing an item, call agent_review_resolve_comment with its id (use format=json to get ids).""",
+        After fixing items, call agent_review_resolve_comments with their ids (use format=json to get ids).
+        JSON carries the scope as base/head so you can diff exactly that range.""",
     )
     suspend fun agent_review_get_review(
         @McpDescription("\"markdown\" or \"json\"") format: String = "markdown",
@@ -51,13 +52,30 @@ class AgentReviewToolset : McpToolset {
     @McpTool
     @McpDescription("Mark a review comment as resolved after addressing it. Optionally attach a short reply explaining what you did.")
     suspend fun agent_review_resolve_comment(
-        @McpDescription("Comment id from agent_review_list_comments") id: String,
+        @McpDescription("Comment id from agent_review_list_comments, or a unique prefix of it") id: String,
         @McpDescription("What you changed, one or two sentences") reply: String = "",
     ): ResolveResult {
         val store = ReviewStore.getInstance(coroutineContext.project)
-        if (store.comments.none { it.id == id }) mcpFail("No comment with id $id")
-        store.updateComment(id) { it.copy(resolved = true, reply = reply.ifBlank { null }) }
-        return ResolveResult(id, true)
+        val comment = store.findComment(id) ?: mcpFail("No comment with id $id")
+        store.updateComment(comment.id) { it.copy(resolved = true, reply = reply.ifBlank { null }) }
+        return ResolveResult(comment.id, true)
+    }
+
+    @McpTool
+    @McpDescription("Resolve several comments in one call. Each item has the comment id (or unique prefix) and an optional reply.")
+    suspend fun agent_review_resolve_comments(
+        @McpDescription("Items to resolve") items: List<ResolveItem>,
+    ): BatchResolveResult {
+        val store = ReviewStore.getInstance(coroutineContext.project)
+        val resolved = mutableListOf<String>()
+        val unknown = mutableListOf<String>()
+        for (item in items) {
+            val comment = store.findComment(item.id)
+            if (comment == null) { unknown += item.id; continue }
+            store.updateComment(comment.id) { it.copy(resolved = true, reply = item.reply.ifBlank { null }) }
+            resolved += comment.id
+        }
+        return BatchResolveResult(resolved, unknown)
     }
 
     @McpTool
@@ -90,14 +108,21 @@ class AgentReviewToolset : McpToolset {
     }
 
     @McpTool
-    @McpDescription("Files in the current review scope with their review state (reviewed, stale, unreviewed) and open comment counts.")
+    @McpDescription("Comment totals (total, open, resolved, outdated) and the files in scope with review state and open comment counts.")
     suspend fun agent_review_status(): StatusResult {
         val project = coroutineContext.project
         val model = ReviewChangesModel.getInstance(project)
-        val open = model.comments().filter { !it.resolved }
-        return StatusResult(model.changes.map { rc ->
-            FileStatus(rc.path, model.state(rc).name.lowercase(), open.count { ReviewPaths.matches(it.path, rc.path) })
-        })
+        val all = model.comments()
+        val open = all.filter { !it.resolved }
+        return StatusResult(
+            total = all.size,
+            open = open.size,
+            resolved = all.size - open.size,
+            outdated = all.count { it.outdated },
+            files = model.changes.map { rc ->
+                FileStatus(rc.path, model.state(rc).name.lowercase(), open.count { ReviewPaths.matches(it.path, rc.path) })
+            },
+        )
     }
 
     @Serializable
@@ -110,5 +135,11 @@ class AgentReviewToolset : McpToolset {
     data class FileStatus(val path: String, val state: String, val open_comments: Int)
 
     @Serializable
-    data class StatusResult(val files: List<FileStatus>)
+    data class StatusResult(val total: Int, val open: Int, val resolved: Int, val outdated: Int, val files: List<FileStatus>)
+
+    @Serializable
+    data class ResolveItem(val id: String, val reply: String = "")
+
+    @Serializable
+    data class BatchResolveResult(val resolved: List<String>, val unknown: List<String>)
 }
