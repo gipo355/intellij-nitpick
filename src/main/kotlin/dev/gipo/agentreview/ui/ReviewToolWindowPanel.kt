@@ -56,7 +56,8 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.EditorTextField
+import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.actions.ToggleReviewedAction
@@ -108,7 +109,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
     private val status = JBLabel()
-    private val notes = JBTextArea(6, 20)
+    private val notes = EditorTextField("", project, PlainTextFileType.INSTANCE).apply {
+        setOneLineMode(false)
+        setPlaceholder("Review-level notes for the agent…")
+        addSettingsProvider { it.settings.isUseSoftWraps = true }
+    }
     private var suppressNotes = false
     private var shown: List<String> = emptyList()
 
@@ -215,14 +220,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
         PopupHandler.installPopupMenu(commentsList, commentsPopup(), "AgentReviewComments")
 
-        notes.lineWrap = true
-        notes.wrapStyleWord = true
-        notes.emptyText.text = "Review-level notes for the agent…"
-        notes.document.addDocumentListener(object : javax.swing.event.DocumentListener {
-            override fun insertUpdate(e: javax.swing.event.DocumentEvent) = push()
-            override fun removeUpdate(e: javax.swing.event.DocumentEvent) = push()
-            override fun changedUpdate(e: javax.swing.event.DocumentEvent) = push()
-            private fun push() {
+        notes.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
+            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
                 if (!suppressNotes) store.setNotes(notes.text)
             }
         })
@@ -241,7 +240,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
         val notesPane = JPanel(BorderLayout()).apply {
             add(JBLabel("Notes for the agent").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
-            add(JBScrollPane(notes), BorderLayout.CENTER)
+            add(notes, BorderLayout.CENTER)
         }
         val bottom = OnePixelSplitter(true, "Nitpick.notesSplit", 0.6f).apply {
             firstComponent = commentsPane

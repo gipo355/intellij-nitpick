@@ -7,8 +7,11 @@ import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.dsl.listCellRenderer.listCellRenderer
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.EditorTextField
+import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CustomShortcutSet
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -16,7 +19,6 @@ import dev.gipo.agentreview.model.CommentType
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.event.KeyEvent
-import javax.swing.AbstractAction
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -26,23 +28,19 @@ import javax.swing.KeyStroke
 object CommentEditorPopup {
 
     fun show(project: Project, anchor: JComponent, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
-        build(type, text, onSave).showUnderneathOf(anchor)
+        build(project, type, text, onSave).showUnderneathOf(anchor)
     }
 
     fun showAtCaret(project: Project, editor: Editor, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
-        build(type, text, onSave).showInBestPositionFor(editor)
+        build(project, type, text, onSave).showInBestPositionFor(editor)
     }
 
-    private fun build(type: CommentType, text: String, onSave: (String, CommentType) -> Unit): JBPopup {
-        val area = JBTextArea(text, 5, 60).apply {
-            lineWrap = true
-            wrapStyleWord = true
-            emptyText.text = "What should the agent change here?"
-            border = JBUI.Borders.empty(6, 8)
-            font = UIUtil.getLabelFont()
-        }
-        val scroll = JBScrollPane(area).apply {
-            border = JBUI.Borders.customLine(JBUI.CurrentTheme.Focus.defaultButtonColor().darker(), 1)
+    private fun build(project: Project, type: CommentType, text: String, onSave: (String, CommentType) -> Unit): JBPopup {
+        // A real editor, so IdeaVim and editor shortcuts work inside the popup.
+        val area = EditorTextField(text, project, PlainTextFileType.INSTANCE).apply {
+            setOneLineMode(false)
+            setPlaceholder("What should the agent change here?")
+            addSettingsProvider { it.settings.isUseSoftWraps = true }
             preferredSize = Dimension(JBUI.scale(520), JBUI.scale(130))
         }
         val typeBox = ComboBox(CommentType.entries.toTypedArray()).apply {
@@ -77,7 +75,7 @@ object CommentEditorPopup {
         val panel = JPanel(BorderLayout(0, 8)).apply {
             border = JBUI.Borders.empty(10, 12, 10, 12)
             add(header, BorderLayout.NORTH)
-            add(scroll, BorderLayout.CENTER)
+            add(area, BorderLayout.CENTER)
             add(footer, BorderLayout.SOUTH)
         }
 
@@ -91,10 +89,9 @@ object CommentEditorPopup {
         }
         save.addActionListener { commit() }
         cancel.addActionListener { popup.cancel() }
-        area.inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.CTRL_DOWN_MASK), "save")
-        area.actionMap.put("save", object : AbstractAction() {
-            override fun actionPerformed(e: java.awt.event.ActionEvent) = commit()
-        })
+        object : DumbAwareAction() {
+            override fun actionPerformed(e: AnActionEvent) = commit()
+        }.registerCustomShortcutSet(CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.CTRL_DOWN_MASK)), area)
 
         popup = JBPopupFactory.getInstance()
             .createComponentPopupBuilder(panel, area)
