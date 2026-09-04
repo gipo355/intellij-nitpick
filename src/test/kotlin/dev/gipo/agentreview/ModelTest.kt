@@ -49,6 +49,12 @@ class ModelTest {
     }
 
     @Test
+    fun fileFilterWithCommentsIgnoresState() {
+        assertTrue(ReviewState.entries.all { FileFilter.WITH_COMMENTS.shows(it, hasComments = true) })
+        assertTrue(ReviewState.entries.none { FileFilter.WITH_COMMENTS.shows(it, hasComments = false) })
+    }
+
+    @Test
     fun contextLinesAroundRange() {
         val content = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj"
         assertEquals(" 9: i\n10: j", ContextLines.around(content, 10, 10, 1))

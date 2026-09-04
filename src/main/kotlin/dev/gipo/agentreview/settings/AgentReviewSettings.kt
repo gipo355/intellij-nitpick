@@ -17,12 +17,14 @@ enum class AutoMark(val label: String) { OFF("Off"), ON_OPEN("When diff opens"),
 enum class FileFilter(val label: String) {
     ALL("All Files"),
     UNREVIEWED("Unreviewed Only"),
-    REVIEWED("Reviewed Only");
+    REVIEWED("Reviewed Only"),
+    WITH_COMMENTS("Has Comments");
 
-    fun shows(state: ReviewState): Boolean = when (this) {
+    fun shows(state: ReviewState, hasComments: Boolean = false): Boolean = when (this) {
         ALL -> true
         UNREVIEWED -> state != ReviewState.REVIEWED
         REVIEWED -> state == ReviewState.REVIEWED
+        WITH_COMMENTS -> hasComments
     }
 }
 

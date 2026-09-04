@@ -416,7 +416,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private fun showChanges() {
         val filter = AgentReviewSettings.getInstance().state.fileFilter
-        val visible = model.changes.filter { filter.shows(model.state(it)) }
+        val commented = if (filter == FileFilter.WITH_COMMENTS) model.comments().filter { !it.isReviewLevel }.map { it.path } else emptyList()
+        val visible = model.changes.filter { rc -> filter.shows(model.state(rc), commented.any { ReviewPaths.matches(it, rc.path) }) }
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
