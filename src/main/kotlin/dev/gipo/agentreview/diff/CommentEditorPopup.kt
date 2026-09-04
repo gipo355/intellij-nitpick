@@ -5,7 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.dsl.listCellRenderer.listCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -47,9 +47,9 @@ object CommentEditorPopup {
         }
         val typeBox = ComboBox(CommentType.entries.toTypedArray()).apply {
             selectedItem = type
-            renderer = SimpleListCellRenderer.create { label, value, _ ->
-                label.text = value.name.lowercase().replaceFirstChar { it.uppercase() }
-                label.foreground = CommentColors.of(value)
+            renderer = listCellRenderer {
+                val color = CommentColors.of(value)
+                text(value.name.lowercase().replaceFirstChar { it.uppercase() }) { foreground = color }
             }
         }
         val header = JPanel(HorizontalLayout(8)).apply {

@@ -14,7 +14,6 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.util.Alarm
-import com.intellij.util.SingleAlarm
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import git4idea.repo.GitRepository
@@ -37,7 +36,7 @@ import com.intellij.openapi.vcs.changes.ui.ChangeNodeDecorator
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
 import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
-import com.intellij.openapi.vcs.changes.ui.SimpleChangesBrowser
+import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -50,7 +49,8 @@ import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.SimpleColoredComponent
-import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
+import com.intellij.openapi.actionSystem.toolbarLayout.ToolbarLayoutStrategy
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -99,7 +99,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private val store = ReviewStore.getInstance(project)
     private val model = ReviewChangesModel.getInstance(project)
-    private val browser = object : SimpleChangesBrowser(project, false, false) {
+    private val browser = object : SimpleAsyncChangesBrowser(project, false, false) {
         // Called from the super constructor: no instance state allowed here.
         override fun createPopupMenuActions(): List<AnAction> =
             super.createPopupMenuActions() + Separator.getInstance() + ActionManager.getInstance().getAction("AgentReview.TreePopup")
@@ -269,11 +269,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 refreshUi()
             }
         })
-        val autoRefresh = SingleAlarm({ model.refresh() }, 1000, this, Alarm.ThreadToUse.SWING_THREAD, ModalityState.nonModal())
+        val autoRefresh = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+        fun scheduleRefresh() {
+            autoRefresh.cancelAllRequests()
+            autoRefresh.addRequest({ model.refresh() }, 1000, ModalityState.nonModal())
+        }
         bus.subscribe(ChangeListListener.TOPIC, object : ChangeListListener {
-            override fun changeListUpdateDone() = autoRefresh.cancelAndRequest()
+            override fun changeListUpdateDone() = scheduleRefresh()
         })
-        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { autoRefresh.cancelAndRequest() })
+        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { scheduleRefresh() })
         refreshUi()
         model.refresh()
     }
@@ -333,6 +337,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("AgentReviewToolbar", group, true)
         toolbar.targetComponent = browser.viewer
+        toolbar.layoutStrategy = ToolbarLayoutStrategy.WRAP_STRATEGY
         return toolbar.component
     }
 
@@ -411,11 +416,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
-        val changes = visible.mapNotNull { it.change }
-        // Rebuilding the tree drops the selection. Keep whatever is still visible.
-        val selected = browser.selectedChanges.filter { it in changes }
-        browser.setChangesToDisplay(changes)
-        if (selected.isNotEmpty()) browser.viewer.setSelectedChanges(selected)
+        // The rebuild keeps the selected files that are still visible.
+        browser.setChangesToDisplay(visible.mapNotNull { it.change }, ChangesTree.KEEP_SELECTED_OBJECTS)
     }
 
     private fun refreshUi() {
@@ -640,7 +642,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val others = store.savedSessions().drop(1)
             JBPopupFactory.getInstance().createPopupChooserBuilder(others)
                 .setTitle("Delete Session")
-                .setRenderer(SimpleListCellRenderer.create { label, s, _ -> label.text = "${s.scope.describe()} · ${s.reviewed.size} reviewed" })
+                .setRenderer(textListCellRenderer { "${it.scope.describe()} · ${it.reviewed.size} reviewed" })
                 .setNamerForFiltering { it.scope.describe() }
                 .setItemChosenCallback { store.forgetSession(it.scope.key()) }
                 .createPopup()

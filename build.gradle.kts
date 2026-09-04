@@ -37,6 +37,8 @@ dependencies {
 
 kotlin {
     jvmToolchain(21)
+    // Interface defaults stay defaults: no bridge overrides of deprecated ToolWindowFactory methods.
+    compilerOptions { jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY) }
 }
 
 intellijPlatform {
