@@ -390,7 +390,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
-        browser.setChangesToDisplay(visible.mapNotNull { it.change })
+        val changes = visible.mapNotNull { it.change }
+        // Rebuilding the tree drops the selection. Keep whatever is still visible.
+        val selected = browser.selectedChanges.filter { it in changes }
+        browser.setChangesToDisplay(changes)
+        if (selected.isNotEmpty()) browser.viewer.setSelectedChanges(selected)
     }
 
     private fun refreshUi() {
