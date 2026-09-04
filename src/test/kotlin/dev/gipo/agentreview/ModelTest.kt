@@ -1,6 +1,7 @@
 package dev.gipo.agentreview
 
 import dev.gipo.agentreview.channels.TerminalPayload
+import dev.gipo.agentreview.export.ContextLines
 import dev.gipo.agentreview.export.JsonExporter
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ContentHash
@@ -42,6 +43,15 @@ class ModelTest {
         assertTrue(ReviewState.entries.all { FileFilter.ALL.shows(it) })
         assertEquals(listOf(ReviewState.UNREVIEWED, ReviewState.STALE), ReviewState.entries.filter { FileFilter.UNREVIEWED.shows(it) })
         assertEquals(listOf(ReviewState.REVIEWED), ReviewState.entries.filter { FileFilter.REVIEWED.shows(it) })
+    }
+
+    @Test
+    fun contextLinesAroundRange() {
+        val content = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj"
+        assertEquals(" 9: i\n10: j", ContextLines.around(content, 10, 10, 1))
+        assertEquals("1: a\n2: b\n3: c", ContextLines.around(content, 2, 2, 1))
+        assertEquals("3: c", ContextLines.around(content, 3, 3, 0))
+        assertEquals("", ContextLines.around(content, 50, 50, 2))
     }
 
     @Test

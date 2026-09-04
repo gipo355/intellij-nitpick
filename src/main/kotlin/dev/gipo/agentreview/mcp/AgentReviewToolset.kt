@@ -14,7 +14,14 @@ import dev.gipo.agentreview.model.Side
 import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.store.ReviewStore
+import dev.gipo.agentreview.export.ContextLines
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -41,12 +48,38 @@ class AgentReviewToolset : McpToolset {
     }
 
     @McpTool
-    @McpDescription("List review comments as JSON objects with id, location, path, side, start_line, end_line, type, text, resolved.")
+    @McpDescription(
+        """List review comments as JSON objects with id, location, path, side, start_line, end_line, type, text, resolved, reply, snippet.
+        Filter by path prefix, type, or creation time to work one file at a time or poll for new comments.
+        context_lines > 0 adds a `context` field with numbered lines around the anchor.""",
+    )
     suspend fun agent_review_list_comments(
         @McpDescription("Include comments already marked resolved") include_resolved: Boolean = false,
+        @McpDescription("Only comments whose path starts with this, e.g. src/main/") path_prefix: String = "",
+        @McpDescription("Only this type: note, issue, question, nit, praise") type: String = "",
+        @McpDescription("Only comments created at or after this epoch millisecond timestamp") since: Long = 0,
+        @McpDescription("Lines of file content to include before and after the anchor; 0 for none") context_lines: Int = 0,
     ): String {
-        val comments = ReviewChangesModel.getInstance(coroutineContext.project).comments()
-        return JsonExporter.encode(JsonExporter.comments(comments, include_resolved))
+        val model = ReviewChangesModel.getInstance(coroutineContext.project)
+        val wantType = CommentType.entries.firstOrNull { it.name.equals(type, ignoreCase = true) }
+        val comments = model.comments().filter { c ->
+            c.path.startsWith(path_prefix) && (wantType == null || c.type == wantType) && c.createdAt >= since
+        }
+        val array = JsonExporter.comments(comments, include_resolved)
+        if (context_lines <= 0) return JsonExporter.encode(array)
+        val byId = comments.associateBy { it.id }
+        val withContext = buildJsonArray {
+            for (element in array) {
+                val obj = element.jsonObject
+                val c = byId[obj["id"]?.jsonPrimitive?.content] ?: continue
+                val start = c.startLine
+                val rc = model.find(c.path)
+                val content = if (c.side == Side.OLD) rc?.beforeContent else rc?.content
+                val context = if (start != null && content != null) ContextLines.around(content, start, c.endLine ?: start, context_lines) else null
+                add(JsonObject(obj + ("context" to (context?.let { JsonPrimitive(it) } ?: JsonNull))))
+            }
+        }
+        return JsonExporter.encode(withContext)
     }
 
     @McpTool
