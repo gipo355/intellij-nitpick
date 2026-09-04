@@ -48,6 +48,23 @@ class PluginLoadTest : BasePlatformTestCase() {
     }
 }
 
+class AlignReviewedTest : BasePlatformTestCase() {
+    fun testAlignMarksAllUnlessAllReviewed() {
+        val store = ReviewStore.getInstance(project)
+        store.clear()
+        store.setReviewed("a.kt", "")
+        val paths = listOf("a.kt", "b.kt")
+        // Mixed: everything becomes reviewed.
+        assertEquals(ReviewState.REVIEWED, dev.gipo.agentreview.actions.ToggleReviewedAction.alignReviewed(project, paths))
+        assertEquals(ReviewState.REVIEWED, store.session.reviewState("b.kt", null))
+        // All reviewed: everything becomes unreviewed.
+        assertEquals(ReviewState.UNREVIEWED, dev.gipo.agentreview.actions.ToggleReviewedAction.alignReviewed(project, paths))
+        assertEquals(ReviewState.UNREVIEWED, store.session.reviewState("a.kt", null))
+        assertEquals(ReviewState.UNREVIEWED, store.session.reviewState("b.kt", null))
+        store.clear()
+    }
+}
+
 class SessionPerScopeTest : com.intellij.testFramework.fixtures.BasePlatformTestCase() {
     fun testScopesKeepSeparateSessions() {
         val store = ReviewStore.getInstance(project)

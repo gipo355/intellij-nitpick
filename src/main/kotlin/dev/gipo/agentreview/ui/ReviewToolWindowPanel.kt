@@ -258,7 +258,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             })
             add(ActionManager.getInstance().getAction("AgentReview.PrevUnreviewed"))
             add(ActionManager.getInstance().getAction("AgentReview.NextUnreviewed"))
-            add(object : AnAction("Toggle Reviewed", "Space also toggles the selected file", AllIcons.Actions.Checked), DumbAware {
+            add(object : AnAction("Toggle Reviewed", "Space also toggles the selection. A folder marks all files under it, or unmarks them when all are reviewed", AllIcons.Actions.Checked), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
             add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
@@ -419,10 +419,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
     }
 
+    /** One file toggles. Several (a folder) align: all reviewed unmarks, anything else marks all. */
     private fun toggleSelectedReviewed() {
-        for (change in browser.selectedChanges) {
-            ToggleReviewedAction.toggleReviewed(project, ReviewPaths.relative(project, change), null)
-        }
+        val paths = browser.selectedChanges.map { ReviewPaths.relative(project, it) }
+        if (paths.size == 1) ToggleReviewedAction.toggleReviewed(project, paths[0], null)
+        else if (paths.isNotEmpty()) ToggleReviewedAction.alignReviewed(project, paths)
     }
 
     private fun open(c: Comment) {

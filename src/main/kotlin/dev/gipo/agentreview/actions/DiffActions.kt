@@ -106,25 +106,46 @@ class AddFileCommentAction : DiffReviewAction() {
     }
 }
 
+/** Every selected change; a folder node in the tree selects all files under it. */
+private fun AnActionEvent.reviewPaths(): List<String> {
+    val project = project ?: return emptyList()
+    if (binding() == null) {
+        getData(VcsDataKeys.CHANGES)?.takeIf { it.size > 1 }?.let { changes -> return changes.map { ReviewPaths.relative(project, it) } }
+    }
+    return listOfNotNull(reviewPath())
+}
+
 class ToggleReviewedAction : DiffReviewAction() {
     override fun update(e: AnActionEvent) {
         val project = e.project
-        val path = e.reviewPath()
-        e.presentation.isEnabledAndVisible = project != null && path != null
-        if (project == null || path == null) return
+        val paths = e.reviewPaths()
+        e.presentation.isEnabledAndVisible = project != null && paths.isNotEmpty()
+        if (project == null || paths.isEmpty()) return
         val model = ReviewChangesModel.getInstance(project)
-        val reviewed = model.find(path)?.let { model.state(it) } == ReviewState.REVIEWED
-        e.presentation.text = if (reviewed) "Unmark Reviewed" else "Mark Reviewed"
+        val allReviewed = paths.all { p -> model.find(p)?.let { model.state(it) } == ReviewState.REVIEWED }
+        val suffix = if (paths.size > 1) " (${paths.size} files)" else ""
+        e.presentation.text = (if (allReviewed) "Unmark Reviewed" else "Mark Reviewed") + suffix
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val path = e.reviewPath() ?: return
-        val newState = toggleReviewed(project, path, e.binding())
-        e.binding()?.editor?.let { HintManager.getInstance().showInformationHint(it, "$path: ${newState.name.lowercase()}") }
+        val paths = e.reviewPaths()
+        val newState = if (paths.size > 1) alignReviewed(project, paths)
+        else toggleReviewed(project, paths.singleOrNull() ?: return, e.binding())
+        e.binding()?.editor?.let { HintManager.getInstance().showInformationHint(it, "${paths.single()}: ${newState.name.lowercase()}") }
     }
 
     companion object {
+        /** Unmarks all when every path is reviewed, otherwise marks all. Returns the new common state. */
+        fun alignReviewed(project: Project, paths: List<String>): ReviewState {
+            val store = ReviewStore.getInstance(project)
+            val model = ReviewChangesModel.getInstance(project)
+            val hashes = paths.associateWith { model.find(it)?.hash }
+            val allReviewed = hashes.all { (p, h) -> store.session.reviewState(p, h) == ReviewState.REVIEWED }
+            for ((p, h) in hashes) store.setReviewed(p, if (allReviewed) null else h ?: "")
+            return if (allReviewed) ReviewState.UNREVIEWED else ReviewState.REVIEWED
+        }
+
         /** Returns the new state. Hash comes from the model, else from the NEW editor document. */
         fun toggleReviewed(project: Project, path: String, binding: EditorReviewBinding?, fallbackHash: (() -> String?)? = null): ReviewState {
             val store = ReviewStore.getInstance(project)
