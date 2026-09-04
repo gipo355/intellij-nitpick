@@ -8,6 +8,7 @@ object CommentPlacer {
 
     fun place(all: List<Comment>, changes: List<ReviewedChange>, currentKey: String): List<Comment> = all.mapNotNull { c ->
         if (c.isReviewLevel) return@mapNotNull c.takeIf { it.scopeKey == currentKey }
+        if (c.isFolderLevel) return@mapNotNull c.takeIf { changes.any { rc -> rc.path.startsWith(c.path) } }
         val rc = changes.firstOrNull { it.path == c.path } ?: changes.firstOrNull { ReviewPaths.matches(it.path, c.path) }
             ?: return@mapNotNull null
         if (c.startLine == null) return@mapNotNull c

@@ -65,7 +65,7 @@ enum class CommentType(val marker: String) {
 enum class Author { USER, AGENT }
 
 /**
- * Lines are 1-based. Null lines = file-level. Empty path = review-level.
+ * Lines are 1-based. Null lines = file-level. Empty path = review-level. Path ending in `/` = folder-level.
  */
 @Serializable
 data class Comment(
@@ -91,6 +91,8 @@ data class Comment(
 ) {
     val isFileLevel: Boolean get() = path.isNotEmpty() && startLine == null
     val isReviewLevel: Boolean get() = path.isEmpty()
+    /** Path ends with `/`: the comment is about a directory. */
+    val isFolderLevel: Boolean get() = path.endsWith("/")
 
     /** `path:42`, `path:5-7`, `path:~12` (old side), `path`, or `review`. */
     fun location(): String {

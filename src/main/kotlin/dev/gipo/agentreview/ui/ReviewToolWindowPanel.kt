@@ -73,7 +73,11 @@ import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ReviewedChange
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.settings.AgentReviewSettings
+import dev.gipo.agentreview.settings.CommentFilter
 import dev.gipo.agentreview.settings.FileFilter
+import com.intellij.openapi.vcs.FilePath
+import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
+import com.intellij.util.ui.tree.TreeUtil
 import dev.gipo.agentreview.store.ReviewStore
 import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
@@ -207,8 +211,16 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             }
         })
 
+        val commentsHeader = JPanel(BorderLayout()).apply {
+            add(JBLabel("Comments").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.WEST)
+            val filter = RadioFilterGroup("Filter Comments", CommentFilter.entries, { it.label },
+                { AgentReviewSettings.getInstance().state.commentFilter }) { AgentReviewSettings.getInstance().state.commentFilter = it; refreshUi() }
+            val bar = ActionManager.getInstance().createActionToolbar("AgentReviewComments", DefaultActionGroup(filter), true)
+            bar.targetComponent = commentsList
+            add(bar.component, BorderLayout.EAST)
+        }
         val commentsPane = JPanel(BorderLayout()).apply {
-            add(JBLabel("Comments").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
+            add(commentsHeader, BorderLayout.NORTH)
             add(JBScrollPane(commentsList), BorderLayout.CENTER)
         }
         val notesPane = JPanel(BorderLayout()).apply {
@@ -263,7 +275,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
             add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
-            add(FilterGroup())
+            add(RadioFilterGroup("Filter Files", FileFilter.entries, { it.label },
+                { AgentReviewSettings.getInstance().state.fileFilter }) { AgentReviewSettings.getInstance().state.fileFilter = it; showChanges() })
             add(Separator.getInstance())
             add(ActionManager.getInstance().getAction("AgentReview.CopyMarkdown"))
             add(ActionManager.getInstance().getAction("AgentReview.SendToTerminal"))
@@ -395,7 +408,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         showChanges()
         browser.viewer.repaint()
         commentsModel.clear()
-        val comments = model.comments()
+        val commentFilter = AgentReviewSettings.getInstance().state.commentFilter
+        val comments = model.comments().filter { commentFilter.shows(it) }
         comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
         if (notes.text != session.notes) {
             suppressNotes = true
@@ -425,8 +439,19 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private fun open(c: Comment) {
         if (c.isReviewLevel) return
+        if (c.isFolderLevel) { selectFolder(c.path); return }
         val side = if (c.side == Side.OLD) DiffSide.LEFT else DiffSide.RIGHT
         model.navigate(c.path, c.startLine, side)
+    }
+
+    /** Selects the tree node of [folder] (relative path with trailing `/`) when it is shown. */
+    private fun selectFolder(folder: String) {
+        val tree = browser.viewer
+        val path = TreeUtil.treePathTraverser(tree).find { tp ->
+            val fp = (tp.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? FilePath
+            fp != null && fp.isDirectory && ReviewPaths.relative(project, fp).trimEnd('/') + "/" == folder
+        } ?: return
+        TreeUtil.selectPath(tree, path)
     }
 
     override fun dispose() {
@@ -482,8 +507,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val path = ReviewPaths.relative(project, change)
             val rc = model.find(path)
             val state = rc?.let { model.state(it) } ?: ReviewState.UNREVIEWED
-            val open = model.commentsFor(path).count { !it.resolved }
+            val fileComments = model.commentsFor(path)
+            val open = fileComments.count { !it.resolved }
+            val resolved = fileComments.size - open
             if (open > 0) component.append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+            if (resolved > 0) component.append("  $resolved resolved", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             when (state) {
                 ReviewState.REVIEWED -> component.append("  ✓", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, com.intellij.ui.JBColor(0x2E7D32, 0x81C784)))
                 ReviewState.STALE -> component.append("  ⟳ changed", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
@@ -504,22 +532,25 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val attrs = if (value.resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES
             append(value.text.lineSequence().first().take(120), attrs)
             if (value.author == Author.AGENT) append("  (agent)", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+            value.reply?.takeIf { it.isNotBlank() }?.let { append("  ↩ ${it.lineSequence().first().take(80)}", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES) }
         }
     }
 
-    /** All / unreviewed / reviewed, as radio items under one eye icon. */
-    private inner class FilterGroup : DefaultActionGroup("Filter Files", true), DumbAware {
+    /** Radio items under one icon: eye when [entries] first (all) is active, funnel otherwise. */
+    private class RadioFilterGroup<T>(
+        title: String,
+        private val entries: List<T>,
+        private val label: (T) -> String,
+        private val get: () -> T,
+        private val set: (T) -> Unit,
+    ) : DefaultActionGroup(title, true), DumbAware {
         init {
             templatePresentation.icon = AllIcons.Actions.ToggleVisibility
-            for (f in FileFilter.entries) {
-                add(object : ToggleAction(f.label), DumbAware {
+            for (f in entries) {
+                add(object : ToggleAction(label(f)), DumbAware {
                     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-                    override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.fileFilter == f
-                    override fun setSelected(e: AnActionEvent, state: Boolean) {
-                        if (!state) return
-                        AgentReviewSettings.getInstance().state.fileFilter = f
-                        showChanges()
-                    }
+                    override fun isSelected(e: AnActionEvent): Boolean = get() == f
+                    override fun setSelected(e: AnActionEvent, state: Boolean) { if (state) set(f) }
                 })
             }
         }
@@ -527,9 +558,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
         override fun update(e: AnActionEvent) {
-            val f = AgentReviewSettings.getInstance().state.fileFilter
-            e.presentation.description = "Filter: ${f.label}"
-            e.presentation.icon = if (f == FileFilter.ALL) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
+            val f = get()
+            e.presentation.description = "Filter: ${label(f)}"
+            e.presentation.icon = if (f == entries.first()) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
         }
     }
 

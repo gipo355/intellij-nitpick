@@ -9,6 +9,7 @@ import dev.gipo.agentreview.model.ReviewState
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.settings.CommentFilter
 import dev.gipo.agentreview.settings.FileFilter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -41,6 +42,18 @@ class ModelTest {
         assertTrue(ReviewState.entries.all { FileFilter.ALL.shows(it) })
         assertEquals(listOf(ReviewState.UNREVIEWED, ReviewState.STALE), ReviewState.entries.filter { FileFilter.UNREVIEWED.shows(it) })
         assertEquals(listOf(ReviewState.REVIEWED), ReviewState.entries.filter { FileFilter.REVIEWED.shows(it) })
+    }
+
+    @Test
+    fun commentFilter() {
+        val open = Comment(text = "a")
+        val done = Comment(text = "b", resolved = true)
+        val replied = Comment(text = "c", resolved = true, reply = "fixed")
+        val all = listOf(open, done, replied)
+        assertEquals(all, all.filter { CommentFilter.ALL.shows(it) })
+        assertEquals(listOf(open), all.filter { CommentFilter.UNRESOLVED.shows(it) })
+        assertEquals(listOf(done, replied), all.filter { CommentFilter.RESOLVED.shows(it) })
+        assertEquals(listOf(replied), all.filter { CommentFilter.WITH_REPLY.shows(it) })
     }
 
     @Test

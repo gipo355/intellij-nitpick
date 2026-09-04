@@ -23,6 +23,18 @@ class CommentPlacerTest {
     }
 
     @Test
+    fun folderCommentShowsWhenAChangeLiesUnderIt() {
+        val inside = Comment(path = "src/app/", text = "f")
+        val outside = Comment(path = "docs/", text = "g")
+        val changes = listOf(ReviewedChange(path = "src/app/a.kt", hash = "h", beforeHash = null, content = null, beforeContent = null))
+        val placed = CommentPlacer.place(listOf(inside, outside), changes, currentKey = "k")
+        assertEquals(listOf(inside.id), placed.map { it.id })
+        assertFalse(placed.single().outdated)
+        assertEquals("src/app/", inside.location())
+        assertTrue(inside.isFolderLevel && inside.isFileLevel)
+    }
+
+    @Test
     fun placeKeepsSameHashRelocatesOrMarksOutdated() {
         val h = ContentHash.of(content)
         val same = Comment(path = "a.kt", startLine = 2, endLine = 2, contentHash = h, snippet = "b")
