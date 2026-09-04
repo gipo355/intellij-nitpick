@@ -109,6 +109,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
     private val status = JBLabel()
+    // A real editor, so IdeaVim works here (needs `set ideavimsupport+=dialog`).
     private val notes = EditorTextField("", project, PlainTextFileType.INSTANCE).apply {
         setOneLineMode(false)
         setPlaceholder("Review-level notes for the agent…")

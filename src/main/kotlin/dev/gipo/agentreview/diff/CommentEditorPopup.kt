@@ -36,7 +36,7 @@ object CommentEditorPopup {
     }
 
     private fun build(project: Project, type: CommentType, text: String, onSave: (String, CommentType) -> Unit): JBPopup {
-        // A real editor, so IdeaVim and editor shortcuts work inside the popup.
+        // A real editor, so IdeaVim works inside the popup (needs `set ideavimsupport+=dialog`).
         val area = EditorTextField(text, project, PlainTextFileType.INSTANCE).apply {
             setOneLineMode(false)
             setPlaceholder("What should the agent change here?")
