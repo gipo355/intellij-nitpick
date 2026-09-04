@@ -51,6 +51,25 @@ class MarkdownExporterTest {
     }
 
     @Test
+    fun groupedByFile() {
+        val out = MarkdownExporter.export(session, comments, ExportOptions(mcpHint = false, groupByFile = true))
+        val expected = """
+            |### src/auth.rs
+            |1. `(file)` - Consider adding unit tests
+            |2. **[ISSUE]** `:42` `let timeout = 3000;` - Magic number should be a named constant
+            |3. `:50-55` - This block could be refactored
+            |
+            |### src/old.rs
+            |4. `:~12` - why was this removed?
+            |
+            |
+            |Review notes:
+            |- overall fine
+            |""".trimMargin()
+        assertTrue(out, out.endsWith(expected))
+    }
+
+    @Test
     fun threadsAndWontFix() {
         val c = Comment(
             path = "a.kt", startLine = 3, type = CommentType.QUESTION, text = "why?",

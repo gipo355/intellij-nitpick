@@ -23,7 +23,7 @@ import java.nio.file.Path
 
 /** Builds the export text with the user's settings. */
 object ReviewExport {
-    fun markdown(project: Project): String {
+    fun markdown(project: Project, groupByFile: Boolean = false): String {
         val session = ReviewStore.getInstance(project).session
         val branch = try {
             ScopeChanges.currentBranch(project)
@@ -31,7 +31,7 @@ object ReviewExport {
             null
         }
         val comments = ReviewChangesModel.getInstance(project).comments()
-        return MarkdownExporter.export(session, comments, AgentReviewSettings.getInstance().exportOptions(branch))
+        return MarkdownExporter.export(session, comments, AgentReviewSettings.getInstance().exportOptions(branch).copy(groupByFile = groupByFile))
     }
 
     fun json(project: Project): String {

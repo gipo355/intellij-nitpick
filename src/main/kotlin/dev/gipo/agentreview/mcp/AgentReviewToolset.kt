@@ -44,9 +44,10 @@ class AgentReviewToolset : McpToolset {
     )
     suspend fun agent_review_get_review(
         @McpDescription("\"markdown\" or \"json\"") format: String = "markdown",
+        @McpDescription("Markdown only: group items under a heading per file, with a one-line snippet each") group_by_file: Boolean = false,
     ): String {
         val project = coroutineContext.project
-        return if (format.equals("json", ignoreCase = true)) ReviewExport.json(project) else ReviewExport.markdown(project)
+        return if (format.equals("json", ignoreCase = true)) ReviewExport.json(project) else ReviewExport.markdown(project, group_by_file)
     }
 
     @McpTool

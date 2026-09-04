@@ -12,12 +12,15 @@ data class ExportOptions(
     val includeResolved: Boolean = false,
     val branch: String? = null,
     val mcpHint: Boolean = true,
+    /** `### path` headings, short locations and a one-line snippet per item. */
+    val groupByFile: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_INTRO = "I reviewed your code and have the following comments. Please address them."
         const val MCP_HINT = "If you have the agent_review MCP tools: call agent_review_list_comments for ids, " +
-            "fix each item, then agent_review_resolve_comment with a one-line reply. " +
-            "Ask with agent_review_add_comment when a comment is unclear. Otherwise reply here with what you changed per item."
+            "fix the items, then agent_review_resolve_comments with a one-line reply each (wont_fix for pushback). " +
+            "Answer a QUESTION with agent_review_reply, ask with agent_review_add_comment when a comment is unclear. " +
+            "Otherwise reply here with what you changed per item."
     }
 }
 
@@ -42,7 +45,16 @@ object MarkdownExporter {
             return sb.toString()
         }
 
-        located.forEachIndexed { index, c -> appendItem(sb, index + 1, c, options) }
+        if (options.groupByFile) {
+            var number = 0
+            located.groupBy { it.path }.forEach { (path, items) ->
+                sb.append("### ").append(path).append('\n')
+                items.forEach { appendGroupedItem(sb, ++number, it) }
+                sb.append('\n')
+            }
+        } else {
+            located.forEachIndexed { index, c -> appendItem(sb, index + 1, c, options) }
+        }
 
         val notes = buildList {
             reviewLevel.forEach { add(it.text.trim()) }
@@ -56,6 +68,31 @@ object MarkdownExporter {
         return sb.toString()
     }
 
+    /** `N. **[TYPE]** `:42` `snippet` - text`, replies and resolution as in the flat form. */
+    private fun appendGroupedItem(sb: StringBuilder, number: Int, c: Comment) {
+        val marker = if (c.type.marker.isEmpty()) "" else "**[${c.type.marker}]** "
+        val prefix = "$number. "
+        val where = c.location().removePrefix(c.path).ifEmpty { "(file)" }
+        val lines = c.text.trim().lines()
+        sb.append(prefix).append(marker).append('`').append(where).append('`')
+        c.snippet?.lineSequence()?.firstOrNull { it.isNotBlank() }?.let { sb.append(" `").append(it.trim()).append('`') }
+        if (c.outdated) sb.append(" (outdated)")
+        sb.append(" - ").append(lines.firstOrNull() ?: "").append('\n')
+        val pad = " ".repeat(prefix.length)
+        lines.drop(1).forEach { sb.append(pad).append(it).append('\n') }
+        appendReplies(sb, pad, c)
+    }
+
+    private fun appendReplies(sb: StringBuilder, pad: String, c: Comment) {
+        c.thread.forEach { t ->
+            val who = if (t.author == Author.AGENT) "agent" else "reviewer"
+            sb.append(pad).append("> **").append(who).append(":** ").append(t.text.trim().lines().joinToString("\n$pad> ")).append('\n')
+        }
+        if (c.resolved) {
+            sb.append(pad).append(if (c.wontFix) "_(won't fix" else "_(resolved").append(c.reply?.let { ": $it" } ?: "").append(")_\n")
+        }
+    }
+
     private fun appendItem(sb: StringBuilder, number: Int, c: Comment, options: ExportOptions) {
         val marker = if (c.type.marker.isEmpty()) "" else "**[${c.type.marker}]** "
         val prefix = "$number. "
@@ -66,13 +103,7 @@ object MarkdownExporter {
         sb.append(lines.firstOrNull() ?: "").append('\n')
         val pad = " ".repeat(prefix.length)
         lines.drop(1).forEach { sb.append(pad).append(it).append('\n') }
-        c.thread.forEach { t ->
-            val who = if (t.author == Author.AGENT) "agent" else "reviewer"
-            sb.append(pad).append("> **").append(who).append(":** ").append(t.text.trim().lines().joinToString("\n$pad> ")).append('\n')
-        }
-        if (c.resolved) {
-            sb.append(pad).append(if (c.wontFix) "_(won't fix" else "_(resolved").append(c.reply?.let { ": $it" } ?: "").append(")_\n")
-        }
+        appendReplies(sb, pad, c)
         val snippet = c.snippet?.takeIf { options.includeSnippets && it.isNotBlank() } ?: return
         val snippetLines = snippet.trimEnd().lines()
         val shown = snippetLines.take(options.snippetMaxLines)
