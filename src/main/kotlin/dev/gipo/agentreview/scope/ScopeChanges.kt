@@ -100,7 +100,7 @@ object ReviewPaths {
         val abs = absolute.replace('\\', '/')
         relativeTo(project.basePath, abs)?.let { return it }
         val root = try {
-            ProjectLevelVcsManager.getInstance(project).getVcsRootFor(VcsUtil.getFilePath(abs))?.path
+            ProjectLevelVcsManager.getInstance(project).getVcsRootFor(VcsUtil.getFilePath(abs, java.io.File(abs).isDirectory))?.path
         } catch (e: Exception) {
             null
         }

@@ -61,6 +61,8 @@
                     text="Add File Comment" description="Comment on the whole file" icon="AllIcons.FileTypes.Text">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift F"/>
             </action>
+            <action id="AgentReview.AddFolderComment" class="dev.gipo.agentreview.actions.AddFolderCommentAction"
+                    text="Add Folder Comment…" description="Comment on every file under this folder" icon="AllIcons.Nodes.Folder"/>
             <group id="AgentReview.EditFileComments" class="dev.gipo.agentreview.actions.EditFileCommentsGroup"
                    text="Edit Comment" popup="true"/>
             <action id="AgentReview.ToggleReviewed" class="dev.gipo.agentreview.actions.ToggleReviewedAction"
@@ -109,6 +111,7 @@
         <group id="AgentReview.TreePopup">
             <reference ref="AgentReview.ToggleReviewed"/>
             <reference ref="AgentReview.AddFileComment"/>
+            <reference ref="AgentReview.AddFolderComment"/>
             <reference ref="AgentReview.EditFileComments"/>
         </group>
 

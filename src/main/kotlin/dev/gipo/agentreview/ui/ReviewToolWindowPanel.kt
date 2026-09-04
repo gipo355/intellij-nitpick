@@ -1,6 +1,7 @@
 package dev.gipo.agentreview.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.util.treeView.TreeState
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -14,7 +15,6 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.util.Alarm
-import com.intellij.util.SingleAlarm
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import git4idea.repo.GitRepository
@@ -37,7 +37,7 @@ import com.intellij.openapi.vcs.changes.ui.ChangeNodeDecorator
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
 import com.intellij.openapi.vcs.changes.ui.TreeHandlerEditorDiffPreview
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
-import com.intellij.openapi.vcs.changes.ui.SimpleChangesBrowser
+import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -50,12 +50,13 @@ import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.SimpleColoredComponent
-import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
+import com.intellij.openapi.actionSystem.toolbarLayout.ToolbarLayoutStrategy
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextArea
+import dev.gipo.agentreview.diff.vimReadyTextField
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.actions.ToggleReviewedAction
@@ -73,7 +74,11 @@ import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ReviewedChange
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.settings.AgentReviewSettings
+import dev.gipo.agentreview.settings.CommentFilter
 import dev.gipo.agentreview.settings.FileFilter
+import com.intellij.openapi.vcs.FilePath
+import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
+import com.intellij.util.ui.tree.TreeUtil
 import dev.gipo.agentreview.store.ReviewStore
 import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
@@ -83,6 +88,7 @@ import java.awt.event.MouseEvent
 import javax.swing.DefaultListModel
 import javax.swing.JComponent
 import javax.swing.JList
+import javax.swing.JTree
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
 import com.intellij.diff.util.Side as DiffSide
@@ -94,7 +100,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private val store = ReviewStore.getInstance(project)
     private val model = ReviewChangesModel.getInstance(project)
-    private val browser = object : SimpleChangesBrowser(project, false, false) {
+    private val browser = object : SimpleAsyncChangesBrowser(project, false, false) {
         // Called from the super constructor: no instance state allowed here.
         override fun createPopupMenuActions(): List<AnAction> =
             super.createPopupMenuActions() + Separator.getInstance() + ActionManager.getInstance().getAction("AgentReview.TreePopup")
@@ -102,13 +108,27 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
     private val status = JBLabel()
-    private val notes = JBTextArea(6, 20)
+    private val notes = vimReadyTextField(project, "").apply { setPlaceholder("Review-level notes for the agent…") }
     private var suppressNotes = false
     private var shown: List<String> = emptyList()
 
     init {
         Disposer.register(parent, this)
         browser.setChangeNodeDecorator(ReviewDecorator())
+        // The decorator only sees file nodes. Folder nodes get their comment badge here.
+        browser.viewer.cellRenderer = object : ChangesBrowserNodeRenderer(project, { browser.viewer.isShowFlatten }, false) {
+            override fun customizeCellRenderer(tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
+                super.customizeCellRenderer(tree, value, selected, expanded, leaf, row, hasFocus)
+                val fp = (value as? ChangesBrowserNode<*>)?.userObject as? FilePath ?: return
+                if (!fp.isDirectory) return
+                val folder = ReviewPaths.relative(this@ReviewToolWindowPanel.project, fp).trimEnd('/') + "/"
+                val comments = model.comments().filter { it.isFolderLevel && it.path == folder }
+                val open = comments.count { !it.resolved }
+                val resolved = comments.size - open
+                if (open > 0) append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+                if (resolved > 0) append("  $resolved resolved", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+            }
+        }
         val handler = GatedPreviewHandler()
         val preview = object : TreeHandlerEditorDiffPreview(browser.viewer, handler) {
             override fun getEditorTabName(wrapper: ChangeViewDiffRequestProcessor.Wrapper?): String =
@@ -195,25 +215,27 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
         PopupHandler.installPopupMenu(commentsList, commentsPopup(), "AgentReviewComments")
 
-        notes.lineWrap = true
-        notes.wrapStyleWord = true
-        notes.emptyText.text = "Review-level notes for the agent…"
-        notes.document.addDocumentListener(object : javax.swing.event.DocumentListener {
-            override fun insertUpdate(e: javax.swing.event.DocumentEvent) = push()
-            override fun removeUpdate(e: javax.swing.event.DocumentEvent) = push()
-            override fun changedUpdate(e: javax.swing.event.DocumentEvent) = push()
-            private fun push() {
+        notes.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
+            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
                 if (!suppressNotes) store.setNotes(notes.text)
             }
         })
 
+        val commentsHeader = JPanel(BorderLayout()).apply {
+            add(JBLabel("Comments").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.WEST)
+            val filter = RadioFilterGroup("Filter Comments", CommentFilter.entries, { it.label },
+                { AgentReviewSettings.getInstance().state.commentFilter }) { AgentReviewSettings.getInstance().state.commentFilter = it; refreshUi() }
+            val bar = ActionManager.getInstance().createActionToolbar("AgentReviewComments", DefaultActionGroup(filter), true)
+            bar.targetComponent = commentsList
+            add(bar.component, BorderLayout.EAST)
+        }
         val commentsPane = JPanel(BorderLayout()).apply {
-            add(JBLabel("Comments").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
+            add(commentsHeader, BorderLayout.NORTH)
             add(JBScrollPane(commentsList), BorderLayout.CENTER)
         }
         val notesPane = JPanel(BorderLayout()).apply {
             add(JBLabel("Notes for the agent").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
-            add(JBScrollPane(notes), BorderLayout.CENTER)
+            add(notes, BorderLayout.CENTER)
         }
         val bottom = OnePixelSplitter(true, "Nitpick.notesSplit", 0.6f).apply {
             firstComponent = commentsPane
@@ -242,11 +264,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 refreshUi()
             }
         })
-        val autoRefresh = SingleAlarm({ model.refresh() }, 1000, this, Alarm.ThreadToUse.SWING_THREAD, ModalityState.nonModal())
+        val autoRefresh = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+        fun scheduleRefresh() {
+            autoRefresh.cancelAllRequests()
+            autoRefresh.addRequest({ model.refresh() }, 1000, ModalityState.nonModal())
+        }
         bus.subscribe(ChangeListListener.TOPIC, object : ChangeListListener {
-            override fun changeListUpdateDone() = autoRefresh.cancelAndRequest()
+            override fun changeListUpdateDone() = scheduleRefresh()
         })
-        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { autoRefresh.cancelAndRequest() })
+        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { scheduleRefresh() })
         refreshUi()
         model.refresh()
     }
@@ -263,7 +289,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
             add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
-            add(FilterGroup())
+            add(RadioFilterGroup("Filter Files", FileFilter.entries, { it.label },
+                { AgentReviewSettings.getInstance().state.fileFilter }) { AgentReviewSettings.getInstance().state.fileFilter = it; showChanges() })
             add(Separator.getInstance())
             add(ActionManager.getInstance().getAction("AgentReview.CopyMarkdown"))
             add(ActionManager.getInstance().getAction("AgentReview.SendToTerminal"))
@@ -305,6 +332,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("AgentReviewToolbar", group, true)
         toolbar.targetComponent = browser.viewer
+        toolbar.layoutStrategy = ToolbarLayoutStrategy.WRAP_STRATEGY
         return toolbar.component
     }
 
@@ -383,11 +411,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
-        val changes = visible.mapNotNull { it.change }
-        // Rebuilding the tree drops the selection. Keep whatever is still visible.
-        val selected = browser.selectedChanges.filter { it in changes }
-        browser.setChangesToDisplay(changes)
-        if (selected.isNotEmpty()) browser.viewer.setSelectedChanges(selected)
+        browser.setChangesToDisplay(visible.mapNotNull { it.change }, KeepExpansionAndSelection)
     }
 
     private fun refreshUi() {
@@ -395,7 +419,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         showChanges()
         browser.viewer.repaint()
         commentsModel.clear()
-        val comments = model.comments()
+        val commentFilter = AgentReviewSettings.getInstance().state.commentFilter
+        val comments = model.comments().filter { commentFilter.shows(it) }
         comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
         if (notes.text != session.notes) {
             suppressNotes = true
@@ -425,8 +450,29 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
     private fun open(c: Comment) {
         if (c.isReviewLevel) return
+        if (c.isFolderLevel) { selectFolder(c.path); return }
         val side = if (c.side == Side.OLD) DiffSide.LEFT else DiffSide.RIGHT
         model.navigate(c.path, c.startLine, side)
+    }
+
+    /** Selects the tree node of [folder] (relative path with trailing `/`) when it is shown. */
+    private fun selectFolder(folder: String) {
+        val tree = browser.viewer
+        val path = TreeUtil.treePathTraverser(tree).find { tp ->
+            val fp = (tp.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? FilePath
+            fp != null && fp.isDirectory && ReviewPaths.relative(project, fp).trimEnd('/') + "/" == folder
+        } ?: return
+        TreeUtil.selectPath(tree, path)
+    }
+
+    /** The platform strategies keep either expansion or selection. The rebuild needs both. */
+    private object KeepExpansionAndSelection : ChangesTree.TreeStateStrategy<Pair<TreeState, List<Change>>> {
+        override fun saveState(tree: ChangesTree): Pair<TreeState, List<Change>> =
+            TreeState.createOn(tree) to VcsTreeModelData.selected(tree).userObjects(Change::class.java)
+        override fun restoreState(tree: ChangesTree, state: Pair<TreeState, List<Change>>, scrollToSelection: Boolean) {
+            state.first.applyTo(tree)
+            if (state.second.isNotEmpty()) tree.setSelectedChanges(state.second)
+        }
     }
 
     override fun dispose() {
@@ -482,8 +528,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val path = ReviewPaths.relative(project, change)
             val rc = model.find(path)
             val state = rc?.let { model.state(it) } ?: ReviewState.UNREVIEWED
-            val open = model.commentsFor(path).count { !it.resolved }
+            val fileComments = model.commentsFor(path)
+            val open = fileComments.count { !it.resolved }
+            val resolved = fileComments.size - open
             if (open > 0) component.append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+            if (resolved > 0) component.append("  $resolved resolved", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             when (state) {
                 ReviewState.REVIEWED -> component.append("  ✓", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, com.intellij.ui.JBColor(0x2E7D32, 0x81C784)))
                 ReviewState.STALE -> component.append("  ⟳ changed", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
@@ -504,22 +553,25 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val attrs = if (value.resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES
             append(value.text.lineSequence().first().take(120), attrs)
             if (value.author == Author.AGENT) append("  (agent)", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+            value.reply?.takeIf { it.isNotBlank() }?.let { append("  ↩ ${it.lineSequence().first().take(80)}", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES) }
         }
     }
 
-    /** All / unreviewed / reviewed, as radio items under one eye icon. */
-    private inner class FilterGroup : DefaultActionGroup("Filter Files", true), DumbAware {
+    /** Radio items under one icon: eye when [entries] first (all) is active, funnel otherwise. */
+    private class RadioFilterGroup<T>(
+        title: String,
+        private val entries: List<T>,
+        private val label: (T) -> String,
+        private val get: () -> T,
+        private val set: (T) -> Unit,
+    ) : DefaultActionGroup(title, true), DumbAware {
         init {
             templatePresentation.icon = AllIcons.Actions.ToggleVisibility
-            for (f in FileFilter.entries) {
-                add(object : ToggleAction(f.label), DumbAware {
+            for (f in entries) {
+                add(object : ToggleAction(label(f)), DumbAware {
                     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-                    override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.fileFilter == f
-                    override fun setSelected(e: AnActionEvent, state: Boolean) {
-                        if (!state) return
-                        AgentReviewSettings.getInstance().state.fileFilter = f
-                        showChanges()
-                    }
+                    override fun isSelected(e: AnActionEvent): Boolean = get() == f
+                    override fun setSelected(e: AnActionEvent, state: Boolean) { if (state) set(f) }
                 })
             }
         }
@@ -527,9 +579,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
         override fun update(e: AnActionEvent) {
-            val f = AgentReviewSettings.getInstance().state.fileFilter
-            e.presentation.description = "Filter: ${f.label}"
-            e.presentation.icon = if (f == FileFilter.ALL) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
+            val f = get()
+            e.presentation.description = "Filter: ${label(f)}"
+            e.presentation.icon = if (f == entries.first()) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
         }
     }
 
@@ -594,7 +646,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val others = store.savedSessions().drop(1)
             JBPopupFactory.getInstance().createPopupChooserBuilder(others)
                 .setTitle("Delete Session")
-                .setRenderer(SimpleListCellRenderer.create("") { "${it.scope.describe()} · ${it.reviewed.size} reviewed" })
+                .setRenderer(textListCellRenderer { "${it.scope.describe()} · ${it.reviewed.size} reviewed" })
                 .setNamerForFiltering { it.scope.describe() }
                 .setItemChosenCallback { store.forgetSession(it.scope.key()) }
                 .createPopup()

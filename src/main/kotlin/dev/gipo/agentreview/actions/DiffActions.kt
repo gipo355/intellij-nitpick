@@ -8,7 +8,10 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.VcsDataKeys
+import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
+import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.project.DumbAware
@@ -89,7 +92,7 @@ class AddCommentAction : DiffReviewAction() {
 
 class AddFileCommentAction : DiffReviewAction() {
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project != null && e.reviewPath() != null
+        e.presentation.isEnabledAndVisible = e.project != null && e.reviewPath() != null && e.folderPath() == null
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -106,6 +109,16 @@ class AddFileCommentAction : DiffReviewAction() {
     }
 }
 
+/** Relative path with a trailing `/` when the clicked tree node is a directory. */
+internal fun AnActionEvent.folderPath(): String? {
+    val project = project ?: return null
+    val tree = getData(PlatformDataKeys.CONTEXT_COMPONENT) as? ChangesTree ?: return null
+    val node = tree.leadSelectionPath?.lastPathComponent as? ChangesBrowserNode<*> ?: return null
+    val filePath = node.userObject as? FilePath ?: return null
+    if (!filePath.isDirectory) return null
+    return ReviewPaths.relative(project, filePath).trimEnd('/') + "/"
+}
+
 /** Every selected change; a folder node in the tree selects all files under it. */
 private fun AnActionEvent.reviewPaths(): List<String> {
     val project = project ?: return emptyList()
@@ -113,6 +126,21 @@ private fun AnActionEvent.reviewPaths(): List<String> {
         getData(VcsDataKeys.CHANGES)?.takeIf { it.size > 1 }?.let { changes -> return changes.map { ReviewPaths.relative(project, it) } }
     }
     return listOfNotNull(reviewPath())
+}
+
+class AddFolderCommentAction : DiffReviewAction() {
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = e.project != null && e.folderPath() != null
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val path = e.folderPath() ?: return
+        val anchor = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) as? JComponent ?: return
+        CommentEditorPopup.show(project, anchor, CommentType.NOTE, "") { text, type ->
+            ReviewStore.getInstance(project).addComment(Comment(path = path, side = Side.NEW, type = type, text = text))
+        }
+    }
 }
 
 class ToggleReviewedAction : DiffReviewAction() {

@@ -7,6 +7,7 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import dev.gipo.agentreview.export.ExportOptions
+import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ReviewState
 
 enum class AutoMark(val label: String) { OFF("Off"), ON_OPEN("When diff opens"), ON_CLOSE("When diff closes") }
@@ -21,6 +22,21 @@ enum class FileFilter(val label: String) {
         ALL -> true
         UNREVIEWED -> state != ReviewState.REVIEWED
         REVIEWED -> state == ReviewState.REVIEWED
+    }
+}
+
+/** Comments pane filter. */
+enum class CommentFilter(val label: String) {
+    ALL("All Comments"),
+    UNRESOLVED("Unresolved"),
+    RESOLVED("Resolved"),
+    WITH_REPLY("With Agent Reply");
+
+    fun shows(c: Comment): Boolean = when (this) {
+        ALL -> true
+        UNRESOLVED -> !c.resolved
+        RESOLVED -> c.resolved
+        WITH_REPLY -> !c.reply.isNullOrBlank()
     }
 }
 
@@ -44,6 +60,10 @@ class AgentReviewState : BaseState() {
     var openDiffOnSingleClick by property(false)
     /** Pre-0.3.0 flag, read once for migration. */
     var hideReviewedFiles by property(false)
+    var commentFilterName by string(CommentFilter.ALL.name)
+    var commentFilter: CommentFilter
+        get() = CommentFilter.entries.firstOrNull { it.name == commentFilterName } ?: CommentFilter.ALL
+        set(value) { commentFilterName = value.name }
     var fileFilterName by string(FileFilter.ALL.name)
     var fileFilter: FileFilter
         get() = FileFilter.entries.firstOrNull { it.name == fileFilterName } ?: FileFilter.ALL
