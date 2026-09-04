@@ -56,8 +56,7 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.EditorTextField
-import com.intellij.openapi.fileTypes.PlainTextFileType
+import dev.gipo.agentreview.diff.vimReadyTextField
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.actions.ToggleReviewedAction
@@ -109,12 +108,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
     private val status = JBLabel()
-    // A real editor, so IdeaVim works here (needs `set ideavimsupport+=dialog`).
-    private val notes = EditorTextField("", project, PlainTextFileType.INSTANCE).apply {
-        setOneLineMode(false)
-        setPlaceholder("Review-level notes for the agent…")
-        addSettingsProvider { it.settings.isUseSoftWraps = true }
-    }
+    private val notes = vimReadyTextField(project, "").apply { setPlaceholder("Review-level notes for the agent…") }
     private var suppressNotes = false
     private var shown: List<String> = emptyList()
 

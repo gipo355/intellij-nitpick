@@ -9,6 +9,9 @@ import com.intellij.ui.dsl.listCellRenderer.listCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.EditorTextField
 import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.testFramework.LightVirtualFile
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.project.DumbAwareAction
@@ -24,6 +27,18 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 
+/**
+ * Multi-line text field IdeaVim accepts. IdeaVim only handles editors from its allowlist, and one
+ * entry is "a file named *Dummy.txt", the signal the platform commit message field uses.
+ */
+internal fun vimReadyTextField(project: Project, text: String): EditorTextField {
+    val file = LightVirtualFile("Nitpick Dummy.txt", PlainTextFileType.INSTANCE, text)
+    val document = FileDocumentManager.getInstance().getDocument(file) ?: EditorFactory.getInstance().createDocument(text)
+    return EditorTextField(document, project, PlainTextFileType.INSTANCE, false, false).apply {
+        addSettingsProvider { it.settings.isUseSoftWraps = true }
+    }
+}
+
 /** Comment editor: type chooser, text, Cancel / Save. Ctrl+Enter saves, Esc cancels. */
 object CommentEditorPopup {
 
@@ -36,11 +51,8 @@ object CommentEditorPopup {
     }
 
     private fun build(project: Project, type: CommentType, text: String, onSave: (String, CommentType) -> Unit): JBPopup {
-        // A real editor, so IdeaVim works inside the popup (needs `set ideavimsupport+=dialog`).
-        val area = EditorTextField(text, project, PlainTextFileType.INSTANCE).apply {
-            setOneLineMode(false)
+        val area = vimReadyTextField(project, text).apply {
             setPlaceholder("What should the agent change here?")
-            addSettingsProvider { it.settings.isUseSoftWraps = true }
             preferredSize = Dimension(JBUI.scale(520), JBUI.scale(130))
         }
         val typeBox = ComboBox(CommentType.entries.toTypedArray()).apply {
