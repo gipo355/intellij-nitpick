@@ -50,6 +50,7 @@ import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.SimpleColoredComponent
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -512,7 +513,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
         override fun update(e: AnActionEvent) {
-            e.presentation.text = store.session.scope.kind.label
+            val scope = store.session.scope
+            e.presentation.text = scope.shortLabel()
+            e.presentation.description = "Reviewing ${scope.describe()}"
         }
 
         override fun createPopupActionGroup(button: JComponent, context: com.intellij.openapi.actionSystem.DataContext): DefaultActionGroup {
@@ -545,7 +548,33 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     setScope(Scope(ScopeKind.COMMIT, head = hash.trim()))
                 }
             })
+            val saved = store.savedSessions()
+            if (saved.size > 1) {
+                group.add(Separator.create("Saved Sessions"))
+                for (s in saved) {
+                    group.add(object : ToggleAction("${s.scope.describe()} · ${s.reviewed.size} reviewed"), DumbAware {
+                        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                        override fun isSelected(e: AnActionEvent): Boolean = s.scope.key() == store.currentKey
+                        override fun setSelected(e: AnActionEvent, state: Boolean) { if (state) setScope(s.scope) }
+                    })
+                }
+                group.add(object : AnAction("Delete Session…"), DumbAware {
+                    override fun actionPerformed(e: AnActionEvent) = chooseSessionToDelete(e)
+                })
+            }
             return group
+        }
+
+        private fun chooseSessionToDelete(e: AnActionEvent) {
+            val component = e.inputEvent?.component ?: this@ReviewToolWindowPanel
+            val others = store.savedSessions().drop(1)
+            JBPopupFactory.getInstance().createPopupChooserBuilder(others)
+                .setTitle("Delete Session")
+                .setRenderer(SimpleListCellRenderer.create("") { "${it.scope.describe()} · ${it.reviewed.size} reviewed" })
+                .setNamerForFiltering { it.scope.describe() }
+                .setItemChosenCallback { store.forgetSession(it.scope.key()) }
+                .createPopup()
+                .showUnderneathOf(component)
         }
 
         private fun setScope(scope: Scope) {

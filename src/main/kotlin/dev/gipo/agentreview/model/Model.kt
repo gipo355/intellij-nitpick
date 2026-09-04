@@ -28,6 +28,21 @@ data class Scope(
         else -> kind.name.lowercase()
     }
 
+    /** Toolbar text: the concrete range or commit, not the kind. */
+    fun shortLabel(): String = when (kind) {
+        ScopeKind.UNCOMMITTED -> "Uncommitted"
+        ScopeKind.STAGED -> "Staged"
+        ScopeKind.UNSTAGED -> "Unstaged"
+        ScopeKind.RANGE -> {
+            val mergeBaseRef = baseLabel?.removeSurrounding("merge-base(", ")")?.takeIf { it != baseLabel }
+            if (mergeBaseRef != null) "$mergeBaseRef...${head ?: "HEAD"}" else "${short(base)}..${short(head ?: "HEAD")}"
+        }
+        ScopeKind.COMMIT -> "commit ${short(head)}"
+    }
+
+    /** Hashes to 8 chars, refs untouched. */
+    private fun short(ref: String?): String = ref?.let { if (it.length >= 8 && it.all { c -> c.isDigit() || c in 'a'..'f' }) it.take(8) else it } ?: "?"
+
     fun describe(): String = when (kind) {
         ScopeKind.UNCOMMITTED -> "uncommitted changes"
         ScopeKind.STAGED -> "staged changes"

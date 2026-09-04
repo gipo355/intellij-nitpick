@@ -72,4 +72,30 @@ class SessionPerScopeTest : com.intellij.testFramework.fixtures.BasePlatformTest
         store.forgetOtherSessions()
         store.clearAll()
     }
+
+    fun testSavedSessionsListAndForgetOne() {
+        val store = ReviewStore.getInstance(project)
+        val ab = dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "a", head = "b")
+        val cd = dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "c", head = "d")
+        store.setScope(ab)
+        store.setReviewed("x.kt", "h1")
+        store.setScope(cd)
+        store.setReviewed("y.kt", "h2")
+        store.setScope(dev.gipo.agentreview.model.Scope())
+
+        // Current session first even when empty, then the others newest first.
+        assertEquals(listOf("uncommitted", "range:c..d", "range:a..b"), store.savedSessions().map { it.scope.key() })
+
+        store.forgetSession("range:c..d")
+        assertEquals(listOf("uncommitted", "range:a..b"), store.savedSessions().map { it.scope.key() })
+        // The current session cannot be forgotten.
+        store.forgetSession("uncommitted")
+        assertEquals("uncommitted", store.currentKey)
+
+        // Switching back restores the marks.
+        store.setScope(ab)
+        assertEquals(ReviewState.REVIEWED, store.session.reviewState("x.kt", "h1"))
+        store.forgetOtherSessions()
+        store.clearAll()
+    }
 }
