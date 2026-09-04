@@ -2,6 +2,8 @@
 # bumps `version`, updates CHANGELOG.md, tags v<version> and creates the
 # GitHub release, which triggers publish.yml.
 # Uses a PAT: releases created with the default token trigger nothing.
+# Repo setting "Immutable releases" must stay off: publish.yml attaches the
+# zip after the release is published.
 name: Release Please
 
 on:
