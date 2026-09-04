@@ -11,6 +11,7 @@ import dev.gipo.agentreview.model.Author
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.CommentType
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.model.ThreadEntry
 import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.store.ReviewStore
@@ -57,13 +58,13 @@ class AgentReviewToolset : McpToolset {
         @McpDescription("Include comments already marked resolved") include_resolved: Boolean = false,
         @McpDescription("Only comments whose path starts with this, e.g. src/main/") path_prefix: String = "",
         @McpDescription("Only this type: note, issue, question, nit, praise") type: String = "",
-        @McpDescription("Only comments created at or after this epoch millisecond timestamp") since: Long = 0,
+        @McpDescription("Only comments created or replied to at or after this epoch millisecond timestamp") since: Long = 0,
         @McpDescription("Lines of file content to include before and after the anchor; 0 for none") context_lines: Int = 0,
     ): String {
         val model = ReviewChangesModel.getInstance(coroutineContext.project)
         val wantType = CommentType.entries.firstOrNull { it.name.equals(type, ignoreCase = true) }
         val comments = model.comments().filter { c ->
-            c.path.startsWith(path_prefix) && (wantType == null || c.type == wantType) && c.createdAt >= since
+            c.path.startsWith(path_prefix) && (wantType == null || c.type == wantType) && c.lastActivity >= since
         }
         val array = JsonExporter.comments(comments, include_resolved)
         if (context_lines <= 0) return JsonExporter.encode(array)
@@ -83,15 +84,35 @@ class AgentReviewToolset : McpToolset {
     }
 
     @McpTool
-    @McpDescription("Mark a review comment as resolved after addressing it. Optionally attach a short reply explaining what you did.")
+    @McpDescription(
+        """Mark a review comment as resolved after addressing it. Optionally attach a short reply explaining what you did.
+        wont_fix=true records a pushback instead: the comment closes as "won't fix" with your reason as the reply.""",
+    )
     suspend fun agent_review_resolve_comment(
         @McpDescription("Comment id from agent_review_list_comments, or a unique prefix of it") id: String,
         @McpDescription("What you changed, one or two sentences") reply: String = "",
+        @McpDescription("Close as won't fix instead of fixed") wont_fix: Boolean = false,
     ): ResolveResult {
         val store = ReviewStore.getInstance(coroutineContext.project)
         val comment = store.findComment(id) ?: mcpFail("No comment with id $id")
-        store.updateComment(comment.id) { it.copy(resolved = true, reply = reply.ifBlank { null }) }
+        store.updateComment(comment.id) { it.copy(resolved = true, wontFix = wont_fix, reply = reply.ifBlank { null }) }
         return ResolveResult(comment.id, true)
+    }
+
+    @McpTool
+    @McpDescription(
+        """Reply to a review comment without resolving it, e.g. to answer a QUESTION or ask the reviewer something.
+        The reply threads under the comment in the IDE. Poll agent_review_list_comments with `since` for the reviewer's answer.""",
+    )
+    suspend fun agent_review_reply(
+        @McpDescription("Comment id, or a unique prefix of it") id: String,
+        @McpDescription("Reply text") text: String,
+    ): ResolveResult {
+        val store = ReviewStore.getInstance(coroutineContext.project)
+        val comment = store.findComment(id) ?: mcpFail("No comment with id $id")
+        if (text.isBlank()) mcpFail("Empty reply")
+        store.updateComment(comment.id) { it.copy(thread = it.thread + ThreadEntry(Author.AGENT, text.trim())) }
+        return ResolveResult(comment.id, comment.resolved)
     }
 
     @McpTool
@@ -105,7 +126,7 @@ class AgentReviewToolset : McpToolset {
         for (item in items) {
             val comment = store.findComment(item.id)
             if (comment == null) { unknown += item.id; continue }
-            store.updateComment(comment.id) { it.copy(resolved = true, reply = item.reply.ifBlank { null }) }
+            store.updateComment(comment.id) { it.copy(resolved = true, wontFix = item.wont_fix, reply = item.reply.ifBlank { null }) }
             resolved += comment.id
         }
         return BatchResolveResult(resolved, unknown)
@@ -171,7 +192,7 @@ class AgentReviewToolset : McpToolset {
     data class StatusResult(val total: Int, val open: Int, val resolved: Int, val outdated: Int, val files: List<FileStatus>)
 
     @Serializable
-    data class ResolveItem(val id: String, val reply: String = "")
+    data class ResolveItem(val id: String, val reply: String = "", val wont_fix: Boolean = false)
 
     @Serializable
     data class BatchResolveResult(val resolved: List<String>, val unknown: List<String>)

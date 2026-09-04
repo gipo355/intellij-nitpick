@@ -28,6 +28,12 @@ object JsonExporter {
         put("resolved", c.resolved)
         put("outdated", c.outdated)
         put("reply", c.reply?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("wont_fix", c.wontFix)
+        put("thread", buildJsonArray {
+            c.thread.forEach { t ->
+                add(buildJsonObject { put("author", t.author.name.lowercase()); put("text", t.text); put("created_at", t.createdAt) })
+            }
+        })
         put("snippet", c.snippet?.let { JsonPrimitive(it) } ?: JsonNull)
         put("created_at", c.createdAt)
         put("text", c.text)

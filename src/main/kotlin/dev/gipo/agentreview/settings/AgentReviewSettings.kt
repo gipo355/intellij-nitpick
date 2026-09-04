@@ -37,7 +37,7 @@ enum class CommentFilter(val label: String) {
         ALL -> true
         UNRESOLVED -> !c.resolved
         RESOLVED -> c.resolved
-        WITH_REPLY -> !c.reply.isNullOrBlank()
+        WITH_REPLY -> c.hasAgentReply
     }
 }
 

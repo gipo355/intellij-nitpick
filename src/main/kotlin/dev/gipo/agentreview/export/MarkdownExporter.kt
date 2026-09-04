@@ -1,5 +1,6 @@
 package dev.gipo.agentreview.export
 
+import dev.gipo.agentreview.model.Author
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.commentOrder
@@ -65,8 +66,12 @@ object MarkdownExporter {
         sb.append(lines.firstOrNull() ?: "").append('\n')
         val pad = " ".repeat(prefix.length)
         lines.drop(1).forEach { sb.append(pad).append(it).append('\n') }
+        c.thread.forEach { t ->
+            val who = if (t.author == Author.AGENT) "agent" else "reviewer"
+            sb.append(pad).append("> **").append(who).append(":** ").append(t.text.trim().lines().joinToString("\n$pad> ")).append('\n')
+        }
         if (c.resolved) {
-            sb.append(pad).append("_(resolved").append(c.reply?.let { ": $it" } ?: "").append(")_\n")
+            sb.append(pad).append(if (c.wontFix) "_(won't fix" else "_(resolved").append(c.reply?.let { ": $it" } ?: "").append(")_\n")
         }
         val snippet = c.snippet?.takeIf { options.includeSnippets && it.isNotBlank() } ?: return
         val snippetLines = snippet.trimEnd().lines()
