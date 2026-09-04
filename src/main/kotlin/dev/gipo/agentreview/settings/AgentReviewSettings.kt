@@ -8,6 +8,7 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import dev.gipo.agentreview.export.ExportOptions
 import dev.gipo.agentreview.model.Comment
+import dev.gipo.agentreview.model.CommentType
 import dev.gipo.agentreview.model.ReviewState
 
 enum class AutoMark(val label: String) { OFF("Off"), ON_OPEN("When diff opens"), ON_CLOSE("When diff closes") }
@@ -60,6 +61,11 @@ class AgentReviewState : BaseState() {
     var openDiffOnSingleClick by property(false)
     /** Pre-0.3.0 flag, read once for migration. */
     var hideReviewedFiles by property(false)
+    /** Type preselected for the next new comment. */
+    var lastCommentTypeName by string(CommentType.NOTE.name)
+    var lastCommentType: CommentType
+        get() = CommentType.entries.firstOrNull { it.name == lastCommentTypeName } ?: CommentType.NOTE
+        set(value) { lastCommentTypeName = value.name }
     var commentFilterName by string(CommentFilter.ALL.name)
     var commentFilter: CommentFilter
         get() = CommentFilter.entries.firstOrNull { it.name == commentFilterName } ?: CommentFilter.ALL

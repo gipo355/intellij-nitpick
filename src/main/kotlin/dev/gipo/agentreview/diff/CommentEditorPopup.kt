@@ -19,6 +19,7 @@ import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.model.CommentType
+import dev.gipo.agentreview.settings.AgentReviewSettings
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.event.KeyEvent
@@ -39,7 +40,10 @@ internal fun vimReadyTextField(project: Project, text: String): EditorTextField 
     }
 }
 
-/** Comment editor: type chooser, text, Cancel / Save. Ctrl+Enter saves, Esc cancels. */
+/**
+ * Comment editor: type chooser, text, Cancel / Save. Ctrl+Enter saves, Esc cancels, Alt+1..5 pick the type.
+ * A new comment starts with the last type used.
+ */
 object CommentEditorPopup {
 
     fun show(project: Project, anchor: JComponent, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
@@ -55,8 +59,9 @@ object CommentEditorPopup {
             setPlaceholder("What should the agent change here?")
             preferredSize = Dimension(JBUI.scale(520), JBUI.scale(130))
         }
+        val settings = AgentReviewSettings.getInstance().state
         val typeBox = ComboBox(CommentType.entries.toTypedArray()).apply {
-            selectedItem = type
+            selectedItem = if (text.isEmpty()) settings.lastCommentType else type
             renderer = listCellRenderer {
                 val color = CommentColors.of(value)
                 text(value.name.lowercase().replaceFirstChar { it.uppercase() }) { foreground = color }
@@ -70,7 +75,7 @@ object CommentEditorPopup {
 
         val cancel = JButton("Cancel")
         val save = JButton("Save").apply { putClientProperty("JButton.buttonType", "default") }
-        val hint = JBLabel("Ctrl+Enter to save · Esc to cancel").apply {
+        val hint = JBLabel("Ctrl+Enter to save · Esc to cancel · Alt+1..5 type").apply {
             foreground = UIUtil.getContextHelpForeground()
             font = JBUI.Fonts.smallFont()
         }
@@ -95,9 +100,16 @@ object CommentEditorPopup {
         val commit = {
             val value = area.text.trim()
             if (value.isNotEmpty()) {
-                onSave(value, typeBox.selectedItem as CommentType)
+                val chosen = typeBox.selectedItem as CommentType
+                settings.lastCommentType = chosen
+                onSave(value, chosen)
                 popup.closeOk(null)
             }
+        }
+        CommentType.entries.forEachIndexed { i, t ->
+            object : DumbAwareAction() {
+                override fun actionPerformed(e: AnActionEvent) { typeBox.selectedItem = t }
+            }.registerCustomShortcutSet(CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_1 + i, KeyEvent.ALT_DOWN_MASK)), panel)
         }
         save.addActionListener { commit() }
         cancel.addActionListener { popup.cancel() }
