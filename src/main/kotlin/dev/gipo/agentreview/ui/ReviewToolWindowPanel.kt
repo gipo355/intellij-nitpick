@@ -87,6 +87,7 @@ import java.awt.event.MouseEvent
 import javax.swing.DefaultListModel
 import javax.swing.JComponent
 import javax.swing.JList
+import javax.swing.JTree
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
 import com.intellij.diff.util.Side as DiffSide
@@ -113,6 +114,20 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     init {
         Disposer.register(parent, this)
         browser.setChangeNodeDecorator(ReviewDecorator())
+        // The decorator only sees file nodes. Folder nodes get their comment badge here.
+        browser.viewer.cellRenderer = object : ChangesBrowserNodeRenderer(project, { browser.viewer.isShowFlatten }, false) {
+            override fun customizeCellRenderer(tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
+                super.customizeCellRenderer(tree, value, selected, expanded, leaf, row, hasFocus)
+                val fp = (value as? ChangesBrowserNode<*>)?.userObject as? FilePath ?: return
+                if (!fp.isDirectory) return
+                val folder = ReviewPaths.relative(this@ReviewToolWindowPanel.project, fp).trimEnd('/') + "/"
+                val comments = model.comments().filter { it.isFolderLevel && it.path == folder }
+                val open = comments.count { !it.resolved }
+                val resolved = comments.size - open
+                if (open > 0) append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+                if (resolved > 0) append("  $resolved resolved", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+            }
+        }
         val handler = GatedPreviewHandler()
         val preview = object : TreeHandlerEditorDiffPreview(browser.viewer, handler) {
             override fun getEditorTabName(wrapper: ChangeViewDiffRequestProcessor.Wrapper?): String =
@@ -625,7 +640,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val others = store.savedSessions().drop(1)
             JBPopupFactory.getInstance().createPopupChooserBuilder(others)
                 .setTitle("Delete Session")
-                .setRenderer(SimpleListCellRenderer.create("") { "${it.scope.describe()} · ${it.reviewed.size} reviewed" })
+                .setRenderer(SimpleListCellRenderer.create { label, s, _ -> label.text = "${s.scope.describe()} · ${s.reviewed.size} reviewed" })
                 .setNamerForFiltering { it.scope.describe() }
                 .setItemChosenCallback { store.forgetSession(it.scope.key()) }
                 .createPopup()
