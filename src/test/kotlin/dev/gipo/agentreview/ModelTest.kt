@@ -9,6 +9,7 @@ import dev.gipo.agentreview.model.ReviewState
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.settings.FileFilter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -33,6 +34,13 @@ class ModelTest {
         assertEquals("main..HEAD", Scope(ScopeKind.RANGE, base = "main", head = "HEAD").shortLabel())
         assertEquals("main...HEAD", Scope(ScopeKind.RANGE, base = "abcdef0123", head = "HEAD", baseLabel = "merge-base(main)").shortLabel())
         assertEquals("commit 6702505d", Scope(ScopeKind.COMMIT, head = "6702505d1234").shortLabel())
+    }
+
+    @Test
+    fun fileFilterTreatsStaleAsUnreviewed() {
+        assertTrue(ReviewState.entries.all { FileFilter.ALL.shows(it) })
+        assertEquals(listOf(ReviewState.UNREVIEWED, ReviewState.STALE), ReviewState.entries.filter { FileFilter.UNREVIEWED.shows(it) })
+        assertEquals(listOf(ReviewState.REVIEWED), ReviewState.entries.filter { FileFilter.REVIEWED.shows(it) })
     }
 
     @Test

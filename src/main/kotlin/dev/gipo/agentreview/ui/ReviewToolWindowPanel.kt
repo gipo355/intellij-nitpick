@@ -73,6 +73,7 @@ import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ReviewedChange
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.settings.AgentReviewSettings
+import dev.gipo.agentreview.settings.FileFilter
 import dev.gipo.agentreview.store.ReviewStore
 import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
@@ -262,14 +263,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
             add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
-            add(object : ToggleAction("Hide Reviewed Files", "Show only unreviewed and changed files", AllIcons.Actions.ToggleVisibility), DumbAware {
-                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-                override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.hideReviewedFiles
-                override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    AgentReviewSettings.getInstance().state.hideReviewedFiles = state
-                    showChanges()
-                }
-            })
+            add(FilterGroup())
             add(Separator.getInstance())
             add(ActionManager.getInstance().getAction("AgentReview.CopyMarkdown"))
             add(ActionManager.getInstance().getAction("AgentReview.SendToTerminal"))
@@ -383,10 +377,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         model.refresh()
     }
 
-    /** Reviewed files drop out when the toggle is on. Stale files stay. */
     private fun showChanges() {
-        val hide = AgentReviewSettings.getInstance().state.hideReviewedFiles
-        val visible = model.changes.filter { !hide || model.state(it) != ReviewState.REVIEWED }
+        val filter = AgentReviewSettings.getInstance().state.fileFilter
+        val visible = model.changes.filter { filter.shows(model.state(it)) }
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
@@ -511,6 +504,32 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val attrs = if (value.resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES
             append(value.text.lineSequence().first().take(120), attrs)
             if (value.author == Author.AGENT) append("  (agent)", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+        }
+    }
+
+    /** All / unreviewed / reviewed, as radio items under one eye icon. */
+    private inner class FilterGroup : DefaultActionGroup("Filter Files", true), DumbAware {
+        init {
+            templatePresentation.icon = AllIcons.Actions.ToggleVisibility
+            for (f in FileFilter.entries) {
+                add(object : ToggleAction(f.label), DumbAware {
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                    override fun isSelected(e: AnActionEvent): Boolean = AgentReviewSettings.getInstance().state.fileFilter == f
+                    override fun setSelected(e: AnActionEvent, state: Boolean) {
+                        if (!state) return
+                        AgentReviewSettings.getInstance().state.fileFilter = f
+                        showChanges()
+                    }
+                })
+            }
+        }
+
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+        override fun update(e: AnActionEvent) {
+            val f = AgentReviewSettings.getInstance().state.fileFilter
+            e.presentation.description = "Filter: ${f.label}"
+            e.presentation.icon = if (f == FileFilter.ALL) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
         }
     }
 
