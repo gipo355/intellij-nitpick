@@ -1,6 +1,7 @@
 package dev.gipo.agentreview.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.util.treeView.TreeState
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -416,8 +417,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val paths = visible.map { it.path }
         if (paths == shown) return
         shown = paths
-        // The rebuild keeps the selected files that are still visible.
-        browser.setChangesToDisplay(visible.mapNotNull { it.change }, ChangesTree.KEEP_SELECTED_OBJECTS)
+        browser.setChangesToDisplay(visible.mapNotNull { it.change }, KeepExpansionAndSelection)
     }
 
     private fun refreshUi() {
@@ -469,6 +469,16 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             fp != null && fp.isDirectory && ReviewPaths.relative(project, fp).trimEnd('/') + "/" == folder
         } ?: return
         TreeUtil.selectPath(tree, path)
+    }
+
+    /** The platform strategies keep either expansion or selection. The rebuild needs both. */
+    private object KeepExpansionAndSelection : ChangesTree.TreeStateStrategy<Pair<TreeState, List<Change>>> {
+        override fun saveState(tree: ChangesTree): Pair<TreeState, List<Change>> =
+            TreeState.createOn(tree) to VcsTreeModelData.selected(tree).userObjects(Change::class.java)
+        override fun restoreState(tree: ChangesTree, state: Pair<TreeState, List<Change>>, scrollToSelection: Boolean) {
+            state.first.applyTo(tree)
+            if (state.second.isNotEmpty()) tree.setSelectedChanges(state.second)
+        }
     }
 
     override fun dispose() {
