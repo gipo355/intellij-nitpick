@@ -12,6 +12,7 @@ import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.CommentType
 import dev.gipo.agentreview.model.Side
 import dev.gipo.agentreview.model.ThreadEntry
+import com.intellij.openapi.project.Project
 import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.store.ReviewStore
@@ -86,17 +87,35 @@ class AgentReviewToolset : McpToolset {
     @McpTool
     @McpDescription(
         """Mark a review comment as resolved after addressing it. Optionally attach a short reply explaining what you did.
-        wont_fix=true records a pushback instead: the comment closes as "won't fix" with your reason as the reply.""",
+        wont_fix=true records a pushback instead: the comment closes as "won't fix" with your reason as the reply.
+        If the fix landed elsewhere (moved code), pass new_path and new_line so the IDE points at it.""",
     )
     suspend fun agent_review_resolve_comment(
         @McpDescription("Comment id from agent_review_list_comments, or a unique prefix of it") id: String,
         @McpDescription("What you changed, one or two sentences") reply: String = "",
         @McpDescription("Close as won't fix instead of fixed") wont_fix: Boolean = false,
+        @McpDescription("Project-relative path where the fix landed, when it moved") new_path: String = "",
+        @McpDescription("1-based line in the new version where the fix landed") new_line: Int = 0,
+        @McpDescription("1-based end line of the fix") new_end_line: Int = 0,
     ): ResolveResult {
-        val store = ReviewStore.getInstance(coroutineContext.project)
+        val project = coroutineContext.project
+        val store = ReviewStore.getInstance(project)
         val comment = store.findComment(id) ?: mcpFail("No comment with id $id")
-        store.updateComment(comment.id) { it.copy(resolved = true, wontFix = wont_fix, reply = reply.ifBlank { null }) }
+        store.updateComment(comment.id) {
+            relocate(project, it, new_path, new_line, new_end_line).copy(resolved = true, wontFix = wont_fix, reply = reply.ifBlank { null })
+        }
         return ResolveResult(comment.id, true)
+    }
+
+    /** Moves the anchor to where the fix landed. Hash and snippet come from the scope's current content. */
+    private fun relocate(project: Project, c: Comment, newPath: String, newLine: Int, newEndLine: Int): Comment {
+        if (newPath.isBlank() && newLine <= 0) return c
+        val path = newPath.trim().trimStart('/').ifEmpty { c.path }
+        val line = newLine.takeIf { it > 0 } ?: return c.copy(path = path)
+        val end = newEndLine.takeIf { it >= line } ?: line
+        val rc = ReviewChangesModel.getInstance(project).find(path)
+        val snippet = rc?.content?.lines()?.let { lines -> if (line <= lines.size) lines.subList(line - 1, minOf(end, lines.size)).joinToString("\n") else null }
+        return c.copy(path = path, side = Side.NEW, startLine = line, endLine = end, contentHash = rc?.hash, snippet = snippet ?: c.snippet)
     }
 
     @McpTool
@@ -120,13 +139,17 @@ class AgentReviewToolset : McpToolset {
     suspend fun agent_review_resolve_comments(
         @McpDescription("Items to resolve") items: List<ResolveItem>,
     ): BatchResolveResult {
-        val store = ReviewStore.getInstance(coroutineContext.project)
+        val project = coroutineContext.project
+        val store = ReviewStore.getInstance(project)
         val resolved = mutableListOf<String>()
         val unknown = mutableListOf<String>()
         for (item in items) {
             val comment = store.findComment(item.id)
             if (comment == null) { unknown += item.id; continue }
-            store.updateComment(comment.id) { it.copy(resolved = true, wontFix = item.wont_fix, reply = item.reply.ifBlank { null }) }
+            store.updateComment(comment.id) {
+                relocate(project, it, item.new_path, item.new_line, item.new_end_line)
+                    .copy(resolved = true, wontFix = item.wont_fix, reply = item.reply.ifBlank { null })
+            }
             resolved += comment.id
         }
         return BatchResolveResult(resolved, unknown)
@@ -192,7 +215,14 @@ class AgentReviewToolset : McpToolset {
     data class StatusResult(val total: Int, val open: Int, val resolved: Int, val outdated: Int, val files: List<FileStatus>)
 
     @Serializable
-    data class ResolveItem(val id: String, val reply: String = "", val wont_fix: Boolean = false)
+    data class ResolveItem(
+        val id: String,
+        val reply: String = "",
+        val wont_fix: Boolean = false,
+        val new_path: String = "",
+        val new_line: Int = 0,
+        val new_end_line: Int = 0,
+    )
 
     @Serializable
     data class BatchResolveResult(val resolved: List<String>, val unknown: List<String>)
