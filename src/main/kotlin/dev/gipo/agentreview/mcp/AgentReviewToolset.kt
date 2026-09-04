@@ -40,7 +40,8 @@ class AgentReviewToolset : McpToolset {
         Call this when the user says they left review comments in the IDE, or asks you to address the review.
         Each comment has a location `path:line` (or `path:start-end`, `~` marks the old side) and text.
         After fixing items, call agent_review_resolve_comments with their ids (use format=json to get ids).
-        JSON carries the scope as base/head so you can diff exactly that range.""",
+        JSON carries the scope: scope_kind is one of uncommitted, staged, unstaged (working tree, base/head null),
+        range (git diff base..head; base may be a merge-base hash) or commit (single commit in head).""",
     )
     suspend fun agent_review_get_review(
         @McpDescription("\"markdown\" or \"json\"") format: String = "markdown",
@@ -186,7 +187,7 @@ class AgentReviewToolset : McpToolset {
     }
 
     @McpTool
-    @McpDescription("Comment totals (total, open, resolved, outdated) and the files in scope with review state and open comment counts.")
+    @McpDescription("Comment totals (total, open, resolved, wont_fix, outdated) and the files in scope with review state and per-file open, resolved and won't-fix counts.")
     suspend fun agent_review_status(): StatusResult {
         val project = coroutineContext.project
         val model = ReviewChangesModel.getInstance(project)
@@ -195,10 +196,18 @@ class AgentReviewToolset : McpToolset {
         return StatusResult(
             total = all.size,
             open = open.size,
-            resolved = all.size - open.size,
+            resolved = all.count { it.resolved && !it.wontFix },
+            wont_fix = all.count { it.wontFix },
             outdated = all.count { it.outdated },
             files = model.changes.map { rc ->
-                FileStatus(rc.path, model.state(rc).name.lowercase(), open.count { ReviewPaths.matches(it.path, rc.path) })
+                val mine = all.filter { ReviewPaths.matches(it.path, rc.path) }
+                FileStatus(
+                    path = rc.path,
+                    state = model.state(rc).name.lowercase(),
+                    open_comments = mine.count { !it.resolved },
+                    resolved_comments = mine.count { it.resolved && !it.wontFix },
+                    wont_fix_comments = mine.count { it.wontFix },
+                )
             },
         )
     }
@@ -210,10 +219,10 @@ class AgentReviewToolset : McpToolset {
     data class AddResult(val id: String, val location: String)
 
     @Serializable
-    data class FileStatus(val path: String, val state: String, val open_comments: Int)
+    data class FileStatus(val path: String, val state: String, val open_comments: Int, val resolved_comments: Int, val wont_fix_comments: Int)
 
     @Serializable
-    data class StatusResult(val total: Int, val open: Int, val resolved: Int, val outdated: Int, val files: List<FileStatus>)
+    data class StatusResult(val total: Int, val open: Int, val resolved: Int, val wont_fix: Int, val outdated: Int, val files: List<FileStatus>)
 
     @Serializable
     data class ResolveItem(
