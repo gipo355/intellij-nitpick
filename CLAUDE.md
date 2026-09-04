@@ -14,6 +14,9 @@ diffs inline, mark files reviewed, hand the review to any agent.
   User's real IDE log: `~/.cache/JetBrains/IntelliJIdea2026.2/log/idea.log`.
 - The user installs the zip from disk into the real IDE. Descriptor has
   `require-restart="true"`.
+- Commits on main use Conventional Commits; release-please turns them into
+  the version bump, CHANGELOG.md and the GitHub release. Never edit
+  `version` by hand.
 
 ## Descriptor layout (do not regress)
 

@@ -34,55 +34,34 @@ Open any git project in it and use the **Nitpick** tool window.
 
 Repeat the same steps with a new zip to update. Uninstall from the Installed tab.
 
-## Release to JetBrains Marketplace
+## Release
 
-1. Create a vendor account at https://plugins.jetbrains.com and generate a
-   token under your profile (My Tokens).
-2. The first version must be uploaded manually: Upload plugin → the zip from
-   `./gradlew buildPlugin`. The plugin id `dev.gipo.nitpick` from
-   `plugin.xml` becomes the Marketplace id. JetBrains reviews the first upload,
-   usually within two business days.
-3. Every later version goes through Gradle with the token:
-   ```bash
-   export PUBLISH_TOKEN=perm:...
-   ./gradlew publishPlugin
-   ```
-   `build.gradle.kts` reads `PUBLISH_TOKEN` from the environment. There is no
-   project key or other account setting: Marketplace matches the upload by the
-   plugin id `dev.gipo.nitpick` that the first manual upload registered. It
-   rejects a version that already exists, so bump `version` first. The release
-   channel defaults to stable; set `intellijPlatform.publishing.channels` for a
-   beta channel. Never commit the token.
+Commits on `main` follow [Conventional Commits](https://www.conventionalcommits.org):
+`feat:` bumps the minor version, `fix:` the patch, `feat!:` the major.
+Other types (`chore:`, `docs:`, `refactor:`) stay out of the changelog.
 
-   From CI: store the token as a repository secret and run the same command,
-   for example in a GitHub Actions job triggered by a tag. Wait until the first
-   manual review has cleared before wiring that up.
-4. Release checklist: bump `version` in `build.gradle.kts`, update
-   `<change-notes>` in `plugin.xml`, then
-   ```bash
-   ./gradlew test verifyPlugin buildPlugin
-   ```
-   The verifier runs against the local IDE from `ideaHome`. Fix every
-   "compatibility problem" it reports; warnings about internal API usage are
-   expected for the AI Assistant channel.
+1. `.github/workflows/build.yml` runs `test`, `buildPlugin` and `verifyPlugin`
+   on every pull request. Fix every "compatibility problem" the verifier
+   reports; warnings about internal API usage are expected for the AI
+   Assistant channel.
+2. `.github/workflows/release-please.yml` keeps a release PR open on `main`
+   with the next version and the generated `CHANGELOG.md`. Merge it to tag
+   `v<version>` and create the GitHub release.
+3. `.github/workflows/publish.yml` builds the tag, verifies it, attaches the
+   zip to the release and uploads it to JetBrains Marketplace. The release
+   notes become the plugin's change notes.
+
+Secrets: `PUBLISH_TOKEN` (permanent Marketplace token from
+https://plugins.jetbrains.com, My Tokens) and `RELEASE_PLEASE_TOKEN` (a PAT
+with contents and pull-requests write; releases created with the default
+Actions token do not trigger workflows).
+
+Local publish: `export PUBLISH_TOKEN=perm:...` then `./gradlew publishPlugin`.
+Marketplace rejects a version that already exists. Never commit the token.
 
 `untilBuild` is unset, so Marketplace treats the plugin as compatible with all
 future builds. The AI Assistant channel uses an internal API and is the most
 likely thing to break on a major IDE update.
-
-## GitHub releases
-
-`.github/workflows/release.yml` runs on every push to `main`: it builds the
-plugin against a downloaded IntelliJ IDEA Ultimate (no local IDE on CI) and
-attaches `nitpick-<version>.zip` to the release tagged `v<version>`. The
-version comes from `build.gradle.kts`. A push without a version bump moves the
-tag and replaces the zip on the existing release, so the latest release always
-matches `main`. Users download the zip from Releases and install it from disk
-as above.
-
-The IDE version CI compiles against defaults to `2026.2`; pass
-`-PplatformVersion=2026.2.1` (or set it in the workflow) to change it. Locally
-the build still prefers `ideaHome` when that directory exists.
 
 ## Layout
 

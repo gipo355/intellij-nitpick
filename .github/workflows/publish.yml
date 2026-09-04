@@ -1,0 +1,59 @@
+# On a published GitHub release: build the tag, verify, upload to JetBrains
+# Marketplace with the release notes as change notes.
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # attach the zip to the release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Release notes to HTML
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.release.body }}
+        run: |
+          set -euo pipefail
+          {
+            echo "html<<NOTES_EOF"
+            gh api markdown -f mode=gfm -f text="$BODY"
+            echo
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Test, build, verify
+        env:
+          CHANGE_NOTES: ${{ steps.notes.outputs.html }}
+        run: ./gradlew --no-daemon test buildPlugin verifyPlugin
+
+      - name: Attach zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" build/distributions/*.zip --clobber
+
+      - name: Publish to Marketplace
+        env:
+          CHANGE_NOTES: ${{ steps.notes.outputs.html }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: ./gradlew --no-daemon publishPlugin
