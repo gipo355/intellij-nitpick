@@ -3,29 +3,19 @@
     <name>Nitpick</name>
     <vendor email="gipo18649ah@gmail.com" url="https://github.com/gipo355/intellij-nitpick">gipo355</vendor>
     <description><![CDATA[
-        <p>Review code written by AI agents inside IntelliJ's diff viewer, then hand the review back to the agent.
-        Works with Claude Code, Codex, OpenCode, Pi, GitHub Copilot Chat, JetBrains AI Assistant, and any MCP client.</p>
+        <p>Review code written by AI agents inside IntelliJ, then hand the review back to the agent.
+        Comment on lines like on a pull request, mark files as reviewed, and send the result to Claude Code,
+        Codex, OpenCode, Pi, GitHub Copilot Chat, JetBrains AI Assistant, or any MCP client.</p>
 
-        <h3>Review like a pull request, locally</h3>
         <ul>
-            <li>Pick what to review: uncommitted, staged, unstaged, a stash, a commit, a commit range, or everything since a branch's merge-base.</li>
-            <li>No diff? <b>Current branch</b> lists the whole tree (or one folder). Click a file to open it in the editor and annotate it there: plan a refactor on main, hand the notes to the agent.</li>
-            <li>Comment on a line, a selection, or a whole file. Hover a line and click <b>+</b> in the gutter, or press <b>Alt+Shift+C</b>.</li>
-            <li>Comments render inline under the code with Edit, Resolve, and Delete. Types: note, issue, question, nit, praise.</li>
-            <li>Mark files reviewed. Marks are keyed by content, so a file the agent touches again shows up as changed.</li>
-            <li>Next Unreviewed walks you through what is left.</li>
+            <li><b>Any scope</b>: uncommitted, staged, unstaged, a stash, a commit, a commit range, or everything since a branch's merge-base. Right-click commits in Git Log.</li>
+            <li><b>Branch mode</b>: no diff needed. List the whole tree or one folder, annotate files in their editor, hand the notes to the agent as a plan.</li>
+            <li><b>Inline comments</b>: hover a line and click <b>+</b>, or press <b>Alt+Shift+C</b>. Note, issue, question, nit, praise. Edit, Resolve, Delete on the card.</li>
+            <li><b>Reviewed marks keyed by content</b>: a file the agent edits again shows as changed. Next Unreviewed walks you through the rest.</li>
+            <li><b>Comments follow the text</b> across scopes and commits, and show as outdated when it is gone.</li>
+            <li><b>Send the review</b> to the clipboard, the IDE terminal, a file, a Copilot or AI Assistant chat, or live over MCP where the agent resolves comments with a reply and can ask back.</li>
+            <li><b>One toggle</b> hides every card, button and shortcut Nitpick adds to editors and diffs.</li>
         </ul>
-
-        <h3>Send the review to any agent</h3>
-        <ul>
-            <li><b>Clipboard</b>: tuicr-compatible Markdown with <code>path:line</code> references and code snippets.</li>
-            <li><b>Terminal</b>: paste straight into the IDE terminal tab running claude, codex, opencode, or pi.</li>
-            <li><b>File</b>: write <code>.agent-review/REVIEW.md</code> and <code>REVIEW.json</code> for the agent to read.</li>
-            <li><b>GitHub Copilot Chat</b> and <b>JetBrains AI Assistant</b>: open a chat with the review as the prompt.</li>
-            <li><b>MCP</b>: tools on IntelliJ's built-in MCP server. The agent pulls comments, resolves them with a reply, and can ask you questions back.</li>
-        </ul>
-
-        <p>Git Log integration: right-click one commit, or Ctrl+click several and review them as a range.</p>
     ]]></description>
 
     <dependencies>
