@@ -1,6 +1,8 @@
 package dev.gipo.agentreview.scope
 
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
@@ -8,6 +10,8 @@ import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.CurrentContentRevision
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
+import com.intellij.openapi.roots.ContentIterator
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
 import dev.gipo.agentreview.model.Scope
@@ -15,6 +19,9 @@ import dev.gipo.agentreview.model.ScopeKind
 import git4idea.GitContentRevision
 import git4idea.GitRevisionNumber
 import git4idea.changes.GitChangeUtils
+import git4idea.commands.Git
+import git4idea.commands.GitCommand
+import git4idea.commands.GitLineHandler
 import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepositoryManager
 
@@ -40,8 +47,59 @@ object ScopeChanges {
                 val hash = scope.head ?: return emptyList()
                 repos.flatMap { repo -> GitChangeUtils.getDiff(repo, "$hash~1", hash, true).orEmpty() }
             }
+            ScopeKind.BRANCH -> branchTree(project, scope.root)
         }.sortedBy { ChangesUtil.getFilePath(it).path }
     }
+
+    /**
+     * Every text file the project file index knows under [root] (project-relative, or null for all content),
+     * as an "added" change whose content is the working file. No git call: excludes and libraries are the IDE's.
+     */
+    private fun branchTree(project: Project, root: String?): List<Change> {
+        val index = ProjectFileIndex.getInstance(project)
+        val files = ArrayList<VirtualFile>()
+        val iterator = ContentIterator { vf ->
+            if (!vf.isDirectory && !vf.fileType.isBinary && !index.isInLibrary(vf)) files += vf
+            true
+        }
+        runReadAction {
+            val dir = root?.let { rootDir(project, it) }
+            if (root != null && dir == null) return@runReadAction
+            if (dir != null) index.iterateContentUnderDirectory(dir, iterator) else index.iterateContent(iterator)
+        }
+        return files.map { Change(null, CurrentContentRevision(VcsUtil.getFilePath(it))) }
+    }
+
+    /** [relative] (trailing `/` optional) under the project base, else under the first VCS root. */
+    fun rootDir(project: Project, relative: String): VirtualFile? {
+        val rel = relative.trim('/')
+        val bases = listOfNotNull(project.basePath) +
+            GitRepositoryManager.getInstance(project).repositories.map { it.root.path }
+        for (base in bases) {
+            val vf = LocalFileSystem.getInstance().findFileByPath(if (rel.isEmpty()) base else "$base/$rel")
+            if (vf != null && vf.isDirectory) return vf
+        }
+        return null
+    }
+
+    /** `git stash list` of the first repository as (ref, message), newest first. */
+    fun stashes(project: Project): List<Pair<String, String>> {
+        val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return emptyList()
+        val handler = GitLineHandler(project, repo.root, GitCommand.STASH)
+        handler.addParameters("list", "--format=%gd%x1f%s")
+        handler.setSilent(true)
+        return try {
+            Git.getInstance().runCommand(handler).output.mapNotNull { line ->
+                val sep = line.indexOf('\u001f')
+                if (sep < 0) null else line.substring(0, sep) to line.substring(sep + 1)
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** A stash is a commit on top of the HEAD it was taken from, so it reviews as the range `ref~1..ref`. */
+    fun stashScope(ref: String): Scope = Scope(ScopeKind.RANGE, base = "$ref~1", head = ref, baseLabel = ref)
 
     /** HEAD vs index, so later unstaged edits do not leak in. */
     private fun stagedChange(project: Project, c: GitChangeUtils.GitDiffChange): Change {

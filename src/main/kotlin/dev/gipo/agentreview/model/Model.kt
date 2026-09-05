@@ -9,6 +9,12 @@ enum class ScopeKind(val label: String) {
     UNSTAGED("Unstaged changes"),
     RANGE("Commit range"),
     COMMIT("Single commit"),
+    /** The checked-out tree with no diff: every file under [Scope.root] (or the project) at its current content. */
+    BRANCH("Current branch"),
+    ;
+
+    /** Working-tree diffs follow the changelist manager; ranges, commits and the branch tree refresh on demand. */
+    val followsChangeList: Boolean get() = this == UNCOMMITTED || this == STAGED || this == UNSTAGED
 }
 
 @Serializable
@@ -16,15 +22,18 @@ data class Scope(
     val kind: ScopeKind = ScopeKind.UNCOMMITTED,
     /** Base ref for RANGE. */
     val base: String? = null,
-    /** Head ref for RANGE, commit hash for COMMIT. */
+    /** Head ref for RANGE, commit hash for COMMIT, branch name for BRANCH. */
     val head: String? = null,
     /** Human label for [base] when it is a resolved hash (e.g. `merge-base(main)`). */
     val baseLabel: String? = null,
+    /** BRANCH only: project-relative folder (trailing `/`) that limits the tree. Null is the whole project. */
+    val root: String? = null,
 ) {
-    /** Session key. Working-tree scopes share one session per kind; ranges and commits get their own. */
+    /** Session key. Working-tree scopes share one session per kind; ranges, commits and branches get their own. */
     fun key(): String = when (kind) {
         ScopeKind.RANGE -> "range:${base}..${head ?: "HEAD"}"
         ScopeKind.COMMIT -> "commit:$head"
+        ScopeKind.BRANCH -> "branch:${head ?: "HEAD"}" + (root?.let { "@$it" } ?: "")
         else -> kind.name.lowercase()
     }
 
@@ -38,6 +47,7 @@ data class Scope(
             if (mergeBaseRef != null) "$mergeBaseRef...${head ?: "HEAD"}" else "${short(base)}..${short(head ?: "HEAD")}"
         }
         ScopeKind.COMMIT -> "commit ${short(head)}"
+        ScopeKind.BRANCH -> root?.let { "$it on ${head ?: "HEAD"}" } ?: "Branch ${head ?: "HEAD"}"
     }
 
     /** Hashes to 8 chars, refs untouched. */
@@ -49,6 +59,7 @@ data class Scope(
         ScopeKind.UNSTAGED -> "unstaged changes"
         ScopeKind.RANGE -> "commits ${baseLabel ?: base?.take(8)}..${head?.take(8) ?: "HEAD"}"
         ScopeKind.COMMIT -> "commit ${head?.take(8)}"
+        ScopeKind.BRANCH -> (root?.let { "$it on " } ?: "") + "branch ${head ?: "HEAD"} (whole tree, no diff)"
     }
 }
 
