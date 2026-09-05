@@ -88,7 +88,8 @@ diffs inline, mark files reviewed, hand the review to any agent.
   change. Clicking a tree file opens the source, not the preview diff.
   Saves reach the model through `VFS_CHANGES` (hash invalidation), file
   create/delete/rename schedule a refresh; changelist updates are ignored
-  for BRANCH, RANGE and COMMIT.
+  for BRANCH, RANGE and COMMIT. Repo events touch BRANCH only as a checkout
+  of a named branch (session switch); a detached HEAD is not followed.
 
 ## User preferences seen in this project
 

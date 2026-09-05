@@ -4,7 +4,6 @@ import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.editor.EditorFactory
-import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.diff.EditorReviewBinding
@@ -38,7 +37,7 @@ class DiffBindingTest : BasePlatformTestCase() {
         store.addComment(Comment(path = newSide.path, side = Side.NEW, startLine = 2, endLine = 2, text = "hey"))
         UIUtil.dispatchAllInvocationEvents()
 
-        val editor = newSide.editor as EditorEx
+        val editor = newSide.editor
         val inlays = editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength)
         assertEquals("one comment inlay", 1, inlays.size)
         assertEquals(1, editor.document.getLineNumber(inlays[0].offset))
