@@ -178,9 +178,14 @@ class ToggleReviewedAction : DiffReviewAction() {
         fun toggleReviewed(project: Project, path: String, binding: EditorReviewBinding?, fallbackHash: (() -> String?)? = null): ReviewState {
             val store = ReviewStore.getInstance(project)
             val model = ReviewChangesModel.getInstance(project)
-            val hash = model.find(path)?.hash
-                ?: binding?.takeIf { it.primarySide == Side.NEW }?.let { ContentHash.of(it.editor.document.charsSequence) }
-                ?: fallbackHash?.invoke()
+            val rc = model.find(path)
+            val docHash = binding?.takeIf { it.primarySide == Side.NEW }?.let { ContentHash.of(it.editor.document.charsSequence) }
+            // Branch mode: the open document is the truth, the model's cached hash may predate unsaved edits.
+            val hash = when {
+                rc == null -> docHash
+                rc.tracksWorkingFile -> docHash ?: rc.hash
+                else -> rc.hash ?: docHash
+            } ?: fallbackHash?.invoke()
             val current = store.session.reviewState(path, hash)
             return if (current == ReviewState.REVIEWED) {
                 store.setReviewed(path, null); ReviewState.UNREVIEWED

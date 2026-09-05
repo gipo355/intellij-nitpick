@@ -19,7 +19,9 @@ import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.scope.ChangesListener
 import dev.gipo.agentreview.scope.ReviewChangesModel
+import dev.gipo.agentreview.scope.ReviewedChange
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.store.ReviewStore
 import javax.swing.Icon
@@ -50,13 +52,21 @@ class EditorReviewBinding(
     private val inlays = mutableListOf<Inlay<*>>()
     private val highlighters = mutableListOf<RangeHighlighter>()
 
+    /** What the last render drew; an identical list skips the inlay rebuild (notes typing, other files' comments). */
+    private var rendered: List<Comment>? = null
+
     init {
         editor.putUserData(KEY, this)
         Disposer.register(parent, this)
-        project.messageBus.connect(this).subscribe(ReviewListener.TOPIC, object : ReviewListener {
+        val bus = project.messageBus.connect(this)
+        bus.subscribe(ReviewListener.TOPIC, object : ReviewListener {
             override fun sessionChanged(session: ReviewSession) = render()
         })
-        render()
+        bus.subscribe(ChangesListener.TOPIC, object : ChangesListener {
+            override fun changesUpdated(changes: List<ReviewedChange>) = render()
+            override fun hashesChanged() = render()
+        })
+        render(force = true)
         AddCommentGutterHover(editor, this) { line -> addCommentAt(line) }
     }
 
@@ -71,22 +81,29 @@ class EditorReviewBinding(
         }
     }
 
-    /** Hash of the side's file as the scope model sees it, else of this editor's document. */
+    /**
+     * Hash of the side's file as the scope model sees it, else of this editor's document. When the model
+     * tracks the working file (branch mode) the document wins: it is what the user is looking at.
+     */
     fun contentHash(side: Side): String? {
         val rc = ReviewChangesModel.getInstance(project).find(path)
         return when {
-            rc != null -> if (side == Side.NEW) rc.hash else rc.beforeHash
+            rc != null && !(rc.tracksWorkingFile && side == primarySide) -> if (side == Side.NEW) rc.hash else rc.beforeHash
             side == primarySide -> ContentHash.of(editor.document.charsSequence)
             else -> null
         }
     }
 
-    fun render() {
+    /** Redraws comments. Without [force], nothing happens when the placed comments did not change. */
+    fun render(force: Boolean = false) {
         if (editor.isDisposed) return
-        clear()
+        val comments = ReviewChangesModel.getInstance(project).commentsFor(path)
         consumePendingScroll()
+        if (!force && comments == rendered) return
+        rendered = comments
+        clear()
         val doc = editor.document
-        for (c in ReviewChangesModel.getInstance(project).commentsFor(path)) {
+        for (c in comments) {
             if (c.outdated) continue
             val startLine = c.startLine
             if (startLine == null) {
@@ -111,7 +128,7 @@ class EditorReviewBinding(
         EditorEmbeddedComponentManager.getInstance().addComponent(editor, panel, props)?.let { inlays += it }
     }
 
-    private fun rerender() = render()
+    private fun rerender() = render(force = true)
 
     private fun consumePendingScroll() {
         val model = dev.gipo.agentreview.scope.ReviewChangesModel.getInstance(project)

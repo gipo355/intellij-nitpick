@@ -8,7 +8,8 @@
 
         <h3>Review like a pull request, locally</h3>
         <ul>
-            <li>Pick what to review: uncommitted, staged, unstaged, a commit, a commit range, or everything since a branch's merge-base.</li>
+            <li>Pick what to review: uncommitted, staged, unstaged, a stash, a commit, a commit range, or everything since a branch's merge-base.</li>
+            <li>No diff? <b>Current branch</b> lists the whole tree (or one folder). Click a file to open it in the editor and annotate it there: plan a refactor on main, hand the notes to the agent.</li>
             <li>Comment on a line, a selection, or a whole file. Hover a line and click <b>+</b> in the gutter, or press <b>Alt+Shift+C</b>.</li>
             <li>Comments render inline under the code with Edit, Resolve, and Delete. Types: note, issue, question, nit, praise.</li>
             <li>Mark files reviewed. Marks are keyed by content, so a file the agent touches again shows up as changed.</li>
@@ -45,6 +46,8 @@
                     factoryClass="dev.gipo.agentreview.ui.ReviewToolWindowFactory"/>
 
         <diff.DiffExtension implementation="dev.gipo.agentreview.diff.ReviewDiffExtension"/>
+        <!-- Branch mode only: comments in regular editors, torn down when the scope changes. -->
+        <editorFactoryListener implementation="dev.gipo.agentreview.diff.BranchEditorBinder$Listener"/>
 
         <vcs.changes.changesViewNodeAction implementation="dev.gipo.agentreview.ui.ReviewedHoverAction"/>
 
@@ -79,6 +82,15 @@
             </action>
             <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>
             <add-to-group group-id="Diff.KeymapGroup" anchor="last"/>
+        </group>
+
+        <!-- Regular editors: every entry hides itself unless the editor is bound (branch mode). -->
+        <group id="AgentReview.EditorPopup">
+            <reference ref="AgentReview.AddComment"/>
+            <reference ref="AgentReview.AddFileComment"/>
+            <reference ref="AgentReview.EditFileComments"/>
+            <reference ref="AgentReview.ToggleReviewed"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>
 
         <group id="AgentReview.SendGroup" text="Send Review To" popup="true" icon="AllIcons.Actions.Upload">

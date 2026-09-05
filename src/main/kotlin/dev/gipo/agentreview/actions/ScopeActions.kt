@@ -13,6 +13,7 @@ import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.store.ReviewStore
 
 internal fun startReview(project: Project, scope: Scope) {
+    dev.gipo.agentreview.diff.BranchEditorBinder.getInstance(project)
     ReviewStore.getInstance(project).setScope(scope)
     ReviewChangesModel.getInstance(project).refresh()
     ToolWindowManager.getInstance(project).getToolWindow("Nitpick")?.activate(null)

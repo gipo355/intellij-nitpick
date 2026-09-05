@@ -115,3 +115,17 @@ class MarkdownExporterTest {
         assertTrue(out, out.contains("`a.kt:3` (outdated) - moved away"))
     }
 }
+
+class PlanExportTest {
+    @Test
+    fun branchScopeUsesPlanIntroAndStartCommit() {
+        val session = ReviewSession(scope = dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.BRANCH, base = "abcdef0123456789", head = "main"))
+        val out = MarkdownExporter.export(session, listOf(Comment(path = "a.kt", startLine = 1, text = "split this")), ExportOptions(branch = "main", mcpHint = false))
+        assertTrue(out, out.startsWith(ExportOptions.PLAN_INTRO))
+        assertTrue(out, out.contains("branch main"))
+        assertTrue(out, out.contains("plan started at `abcdef01`"))
+        assertFalse(out, out.contains(ExportOptions.DEFAULT_INTRO))
+        val custom = MarkdownExporter.export(session, emptyList(), ExportOptions(intro = "custom", mcpHint = false))
+        assertTrue(custom, custom.startsWith("custom"))
+    }
+}

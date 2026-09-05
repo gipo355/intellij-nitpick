@@ -64,8 +64,11 @@ object ScopeChanges {
         }
         runReadAction {
             val dir = root?.let { rootDir(project, it) }
-            if (root != null && dir == null) return@runReadAction
-            if (dir != null) index.iterateContentUnderDirectory(dir, iterator) else index.iterateContent(iterator)
+            if (root == null) {
+                index.iterateContent(iterator)
+            } else if (dir != null) {
+                index.iterateContentUnderDirectory(dir, iterator)
+            }
         }
         return files.map { Change(null, CurrentContentRevision(VcsUtil.getFilePath(it))) }
     }
@@ -117,6 +120,10 @@ object ScopeChanges {
             .map { Change(null, CurrentContentRevision(it)) }
         return tracked + unversioned
     }
+
+    /** Full hash of HEAD, or null outside git. */
+    fun headHash(project: Project): String? =
+        GitRepositoryManager.getInstance(project).repositories.firstOrNull()?.currentRevision
 
     fun currentBranch(project: Project): String? {
         val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return null

@@ -34,6 +34,11 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
     @Volatile
     private var storage: ReviewStorage = ReviewStorage()
 
+    /** Bumped on every change of [storage]; cache key for derived views (placed comments). */
+    @Volatile
+    var version: Long = 0L
+        private set
+
     val session: ReviewSession
         get() = storage.sessions[storage.currentKey] ?: ReviewSession()
 
@@ -77,6 +82,7 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
             LOG.warn("Discarding unreadable review state", e)
             ReviewStorage()
         }
+        version++
     }
 
     /** Pre-0.2.1: comments lived inside sessions. */
@@ -93,6 +99,7 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
         val updated = synchronized(this) {
             val next = transform(session).copy(updatedAt = System.currentTimeMillis())
             storage = storage.copy(sessions = storage.sessions + (storage.currentKey to next))
+            version++
             next
         }
         val app = ApplicationManager.getApplication()
@@ -105,7 +112,7 @@ class ReviewStore(private val project: Project) : PersistentStateComponent<Revie
     }
 
     private fun updateStorage(transform: (ReviewStorage) -> ReviewStorage) {
-        synchronized(this) { storage = transform(storage) }
+        synchronized(this) { storage = transform(storage); version++ }
         update { it }
     }
 

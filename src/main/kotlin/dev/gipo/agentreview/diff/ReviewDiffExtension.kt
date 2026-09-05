@@ -44,7 +44,7 @@ class ReviewDiffExtension : DiffExtension() {
         }
         // The unified document and line convertors only exist after the first rediff.
         viewer.addListener(object : DiffViewerListener() {
-            override fun onAfterRediff() = bindings.forEach { it.render() }
+            override fun onAfterRediff() = bindings.forEach { it.render(force = true) }
         })
         val isDeleted = request.getUserData(ChangeDiffRequestProducer.CHANGE_KEY)?.afterRevision == null &&
             request.getUserData(ChangeDiffRequestProducer.CHANGE_KEY) != null
