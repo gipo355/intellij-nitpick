@@ -2,6 +2,7 @@ package dev.gipo.agentreview.diff
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
@@ -22,6 +23,7 @@ import dev.gipo.agentreview.model.Side
 import dev.gipo.agentreview.scope.ChangesListener
 import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewedChange
+import dev.gipo.agentreview.settings.AgentReviewSettings
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.store.ReviewStore
 import javax.swing.Icon
@@ -98,8 +100,13 @@ class EditorReviewBinding(
     /** Redraws comments. Without [force], nothing happens when neither the placed comments nor the document changed. */
     fun render(force: Boolean = false) {
         if (editor.isDisposed) return
-        val comments = ReviewChangesModel.getInstance(project).commentsFor(path)
         consumePendingScroll()
+        if (!annotationsEnabled) {
+            clear()
+            rendered = null
+            return
+        }
+        val comments = ReviewChangesModel.getInstance(project).commentsFor(path)
         // A reload from disk (agent edit, checkout) moves the inlays' markers: a new stamp means redraw.
         val stamp = editor.document.modificationStamp
         if (!force && comments == rendered && stamp == renderedStamp) return
@@ -209,6 +216,14 @@ class EditorReviewBinding(
 
     companion object {
         val KEY: Key<EditorReviewBinding> = Key.create("AgentReview.EditorBinding")
+
+        /** Global switch for everything a binding draws or offers: cards, gutter "+", toolbar and popup entries. */
+        val annotationsEnabled: Boolean get() = AgentReviewSettings.getInstance().state.editorAnnotations
+
+        fun setAnnotationsEnabled(enabled: Boolean) {
+            AgentReviewSettings.getInstance().state.editorAnnotations = enabled
+            EditorFactory.getInstance().allEditors.forEach { it.getUserData(KEY)?.render(force = true) }
+        }
         private val COMMENT_BG = JBColor(0xFFF4D6, 0x4A4429)
         private val RESOLVED_BG = JBColor(0xE6F4E6, 0x2F3F2F)
     }

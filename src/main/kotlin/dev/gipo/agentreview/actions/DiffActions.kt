@@ -31,6 +31,7 @@ import dev.gipo.agentreview.ui.Notifications
 import javax.swing.JComponent
 
 private fun AnActionEvent.binding(): EditorReviewBinding? {
+    if (!EditorReviewBinding.annotationsEnabled) return null
     val editor = getData(DiffDataKeys.CURRENT_EDITOR) ?: getData(CommonDataKeys.EDITOR) ?: return null
     return editor.getUserData(EditorReviewBinding.KEY)
 }

@@ -61,6 +61,8 @@ class AgentReviewState : BaseState() {
     var autoMarkReviewedOnClose by property(false)
     var autoMarkReviewedOnOpen by property(false)
     var openDiffOnSingleClick by property(false)
+    /** Cards, gutter "+" and review buttons in diffs and editors. Off keeps the scope, quiets the editors. */
+    var editorAnnotations by property(true)
     /** Pre-0.3.0 flag, read once for migration. */
     var hideReviewedFiles by property(false)
     /** Type preselected for the next new comment. */

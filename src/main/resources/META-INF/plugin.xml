@@ -55,7 +55,8 @@
     </extensions>
 
     <actions>
-        <group id="AgentReview.DiffActions">
+        <!-- Diff viewers and editors: the three groups below vanish as a whole while Editor Annotations is off. -->
+        <group id="AgentReview.DiffActions" class="dev.gipo.agentreview.actions.AnnotationsGroup">
             <action id="AgentReview.AddComment" class="dev.gipo.agentreview.actions.AddCommentAction"
                     text="Add Review Comment" description="Comment on the selected lines" icon="AllIcons.Toolwindows.ToolWindowMessages">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift C"/>
@@ -85,7 +86,7 @@
         </group>
 
         <!-- Regular editors: every entry hides itself unless the editor is bound (branch mode). -->
-        <group id="AgentReview.EditorPopup">
+        <group id="AgentReview.EditorPopup" class="dev.gipo.agentreview.actions.AnnotationsGroup">
             <reference ref="AgentReview.AddComment"/>
             <reference ref="AgentReview.AddFileComment"/>
             <reference ref="AgentReview.EditFileComments"/>
@@ -110,7 +111,7 @@
             <add-to-group group-id="AgentReview.DiffActions" anchor="last"/>
         </group>
 
-        <group id="AgentReview.DiffToolbar">
+        <group id="AgentReview.DiffToolbar" class="dev.gipo.agentreview.actions.AnnotationsGroup">
             <reference ref="AgentReview.ToggleReviewed"/>
             <reference ref="AgentReview.AddComment"/>
             <reference ref="AgentReview.AddFileComment"/>

@@ -14,7 +14,8 @@ import dev.gipo.agentreview.store.ReviewStore
 /** Opens a real two-side diff viewer headlessly and checks comments render as inlays. */
 class DiffBindingTest : BasePlatformTestCase() {
 
-    fun testBindingAndInlay() {
+    /** Opens a two-side diff of `src/a.kt` and returns the NEW side's binding. */
+    private fun openDiff(): EditorReviewBinding {
         val file = myFixture.addFileToProject("src/a.kt", "line1\nline2\nline3\n").virtualFile
         val factory = DiffContentFactory.getInstance()
         val request = SimpleDiffRequest(
@@ -31,7 +32,38 @@ class DiffBindingTest : BasePlatformTestCase() {
         assertTrue("binding installed on diff editors, got ${bindings.size}", bindings.isNotEmpty())
         val newSide = bindings.first { it.primarySide == Side.NEW }
         assertTrue(newSide.path, newSide.path.endsWith("src/a.kt"))
+        return newSide
+    }
 
+    private fun inlayCount(b: EditorReviewBinding): Int =
+        b.editor.inlayModel.getBlockElementsInRange(0, b.editor.document.textLength).size
+
+    fun testAnnotationsToggleHidesAndRestores() {
+        val newSide = openDiff()
+        val store = ReviewStore.getInstance(project)
+        store.clear()
+        store.addComment(Comment(path = newSide.path, side = Side.NEW, startLine = 2, endLine = 2, text = "hey"))
+        UIUtil.dispatchAllInvocationEvents()
+        assertEquals(1, inlayCount(newSide))
+        try {
+            EditorReviewBinding.setAnnotationsEnabled(false)
+            UIUtil.dispatchAllInvocationEvents()
+            assertEquals("hidden while off", 0, inlayCount(newSide))
+            // A store change while off must not draw either.
+            store.addComment(Comment(path = newSide.path, side = Side.NEW, startLine = 3, endLine = 3, text = "more"))
+            UIUtil.dispatchAllInvocationEvents()
+            assertEquals(0, inlayCount(newSide))
+        } finally {
+            EditorReviewBinding.setAnnotationsEnabled(true)
+        }
+        UIUtil.dispatchAllInvocationEvents()
+        assertEquals("both back when on", 2, inlayCount(newSide))
+        store.clear()
+        UIUtil.dispatchAllInvocationEvents()
+    }
+
+    fun testBindingAndInlay() {
+        val newSide = openDiff()
         val store = ReviewStore.getInstance(project)
         store.clear()
         store.addComment(Comment(path = newSide.path, side = Side.NEW, startLine = 2, endLine = 2, text = "hey"))

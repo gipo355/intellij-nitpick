@@ -74,6 +74,10 @@ at; the export tells the agent to treat the comments as a plan and to
 `git diff <start>..HEAD` to see what it already did. Switching to any other
 scope removes every comment card from the editors again.
 
+The *Editor Annotations* toolbar toggle hides all of it without leaving the
+scope: cards, the gutter `+` and the review buttons, in editors and in every
+diff the IDE opens (Git log included). Flip it back and they return in place.
+
 From Git Log: right-click a commit → *Review Commit with Nitpick*.
 Ctrl+click several commits → *Review Range of N Commits*, oldest vs newest,
 same semantics as the log's own *Compare Versions*.

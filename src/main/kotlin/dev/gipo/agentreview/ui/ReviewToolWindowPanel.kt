@@ -44,6 +44,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.project.guessProjectDir
 import dev.gipo.agentreview.diff.BranchEditorBinder
+import dev.gipo.agentreview.diff.EditorReviewBinding
 import com.intellij.openapi.fileChooser.FileChooserFactory
 import com.intellij.openapi.fileChooser.FileSaverDescriptor
 import com.intellij.openapi.vfs.VirtualFile
@@ -353,6 +354,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private fun createToolbar(): JComponent {
         val group = DefaultActionGroup().apply {
             add(ScopeCombo())
+            add(object : ToggleAction("Editor Annotations", "Show comment cards, the gutter + and the review buttons in diffs and editors. Off keeps the scope.", AllIcons.Actions.Show), DumbAware {
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                override fun isSelected(e: AnActionEvent): Boolean = EditorReviewBinding.annotationsEnabled
+                override fun setSelected(e: AnActionEvent, state: Boolean) = EditorReviewBinding.setAnnotationsEnabled(state)
+            })
             add(object : AnAction("Refresh", "Re-collect changes", AllIcons.Actions.Refresh), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = model.refresh()
             })
