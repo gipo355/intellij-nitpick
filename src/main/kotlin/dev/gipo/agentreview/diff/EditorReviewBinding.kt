@@ -13,6 +13,7 @@ import com.intellij.openapi.editor.markup.HighlighterTargetArea
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.ui.JBColor
@@ -222,6 +223,8 @@ class EditorReviewBinding(
 
         fun setAnnotationsEnabled(enabled: Boolean) {
             AgentReviewSettings.getInstance().state.editorAnnotations = enabled
+            // Branch mode: off drops the editor bindings altogether, on rebinds. Diff viewers keep theirs and redraw.
+            ProjectManager.getInstance().openProjects.forEach { if (!it.isDisposed) BranchEditorBinder.getInstance(it).sync() }
             EditorFactory.getInstance().allEditors.forEach { it.getUserData(KEY)?.render(force = true) }
         }
         private val COMMENT_BG = JBColor(0xFFF4D6, 0x4A4429)

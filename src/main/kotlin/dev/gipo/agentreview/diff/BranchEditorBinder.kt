@@ -41,9 +41,9 @@ class BranchEditorBinder(private val project: Project) : Disposable {
         sync()
     }
 
-    /** Binds or unbinds every open editor to match the current scope. EDT. */
+    /** Binds or unbinds every open editor to match the current scope and the annotations toggle. EDT. */
     fun sync() {
-        val wanted = ReviewStore.getInstance(project).session.scope.kind == ScopeKind.BRANCH
+        val wanted = ReviewStore.getInstance(project).session.scope.kind == ScopeKind.BRANCH && EditorReviewBinding.annotationsEnabled
         if (wanted == active) return
         active = wanted
         if (wanted) {

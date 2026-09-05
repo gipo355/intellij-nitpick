@@ -76,7 +76,8 @@ scope removes every comment card from the editors again.
 
 The *Editor Annotations* toolbar toggle hides all of it without leaving the
 scope: cards, the gutter `+` and the review buttons, in editors and in every
-diff the IDE opens (Git log included). Flip it back and they return in place.
+diff the IDE opens (Git log included). Its shortcuts go quiet in editors too.
+Flip it back and they return in place.
 
 From Git Log: right-click a commit → *Review Commit with Nitpick*.
 Ctrl+click several commits → *Review Range of N Commits*, oldest vs newest,
