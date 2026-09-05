@@ -60,6 +60,19 @@ comments and reviewed marks, so switching back and forth loses nothing.
 | Compare with Branch… | HEAD vs the merge-base with a branch you pick from a searchable list. This is what a pull request shows. |
 | Commit Range… | `base..head`, or `base...head` for merge-base |
 | Single Commit… | one commit vs its parent |
+| Stash… | a stash vs the commit it was taken on |
+| Current Branch, Whole Tree | no diff. Every file of the project at its current content. Click a file to open it in the editor and annotate it there. |
+| Current Branch, Folder… | same, limited to one folder |
+
+### Planning on a branch with no changes
+
+Pick *Current Branch*. The tree lists the whole project (or a folder). A
+file opens in its normal editor tab, where comments, the gutter `+` and
+`Alt+Shift+C` work exactly as in a diff. Marks mean "walked through for the
+plan". The session is per branch and remembers the commit the plan started
+at; the export tells the agent to treat the comments as a plan and to
+`git diff <start>..HEAD` to see what it already did. Switching to any other
+scope removes every comment card from the editors again.
 
 From Git Log: right-click a commit → *Review Commit with Nitpick*.
 Ctrl+click several commits → *Review Range of N Commits*, oldest vs newest,

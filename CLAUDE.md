@@ -76,6 +76,19 @@ diffs inline, mark files reviewed, hand the review to any agent.
 - Reviewed marks are `path -> content hash` of the NEW side. Empty string means
   "reviewed, hash unknown" and never goes stale.
 - Paths are project-relative; `ReviewPaths.matches` tolerates differing roots.
+- `ScopeKind.BRANCH` has no diff: `ScopeChanges.branchTree` lists project
+  files from `ProjectFileIndex` as `Change(null, CurrentContentRevision)`.
+  Session key `branch:<name>[@folder/]`, `base` = HEAD when the plan started.
+- `ReviewedChange` is lazy: hash and content load on first use. Diff scopes
+  prime everything in `refresh` (off EDT); the branch tree primes only files
+  with a mark or comment. `state()` never reads a hash for an unmarked file.
+  `ReviewChangesModel.comments()` is memoized on (changes version, store version).
+- Branch mode binds `EditorReviewBinding` to regular editors through
+  `BranchEditorBinder` (editorFactoryListener) and removes them on scope
+  change. Clicking a tree file opens the source, not the preview diff.
+  Saves reach the model through `VFS_CHANGES` (hash invalidation), file
+  create/delete/rename schedule a refresh; changelist updates are ignored
+  for BRANCH, RANGE and COMMIT.
 
 ## User preferences seen in this project
 
