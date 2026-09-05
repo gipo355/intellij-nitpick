@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/gipo355/intellij-nitpick/compare/v0.3.0...v0.3.1) (2026-09-04)
+
+
+### Continuous Integration
+
+* document that immutable releases must stay off ([1f9fdba](https://github.com/gipo355/intellij-nitpick/commit/1f9fdbafc1fe0e785943656c53f56a186af116c6))
+
 ## [0.3.0](https://github.com/gipo355/intellij-nitpick/compare/v0.2.1...v0.3.0) (2026-09-04)
 
 
