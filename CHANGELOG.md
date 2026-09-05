@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/gipo355/intellij-nitpick/compare/v0.3.1...v0.4.0) (2026-09-05)
+
+
+### Features
+
+* branch mode and editor annotations toggle ([fa2d299](https://github.com/gipo355/intellij-nitpick/commit/fa2d299bd33ff603c36966eac6a862a0e5ae324b))
+* branch mode annotates the checked-out tree, lazy hashing, stash scope ([5751726](https://github.com/gipo355/intellij-nitpick/commit/5751726f60ff4c55f6006d40066f02c27ff17e0f))
+* editor annotations toggle hides cards, gutter + and review buttons ([5e8c05a](https://github.com/gipo355/intellij-nitpick/commit/5e8c05ae1673a3bd64c75f94e9ddbfb6a333babe))
+* hidden annotations also silence editor shortcuts and unbind branch editors ([7b40b9d](https://github.com/gipo355/intellij-nitpick/commit/7b40b9d8121342cbb89e172df8c799f210405401))
+* **scope:** add branch scope kind and single-pass content hash ([6466172](https://github.com/gipo355/intellij-nitpick/commit/6466172fcd39a6584b1619d4a1bc1703481e1f17))
+
+
+### Bug Fixes
+
+* **branch:** cancellable tree walk, follow named checkouts only, redraw on reload ([c3c1375](https://github.com/gipo355/intellij-nitpick/commit/c3c1375438d7d074aa12cabf0a1a0769b22edc4e))
+
 ## [0.3.1](https://github.com/gipo355/intellij-nitpick/compare/v0.3.0...v0.3.1) (2026-09-04)
 
 
