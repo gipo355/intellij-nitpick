@@ -39,6 +39,34 @@ class ModelTest {
         assertEquals("main..HEAD", Scope(ScopeKind.RANGE, base = "main", head = "HEAD").shortLabel())
         assertEquals("main...HEAD", Scope(ScopeKind.RANGE, base = "abcdef0123", head = "HEAD", baseLabel = "merge-base(main)").shortLabel())
         assertEquals("commit 6702505d", Scope(ScopeKind.COMMIT, head = "6702505d1234").shortLabel())
+        assertEquals("Branch main", Scope(ScopeKind.BRANCH, head = "main").shortLabel())
+        assertEquals("src/app/ on main", Scope(ScopeKind.BRANCH, head = "main", root = "src/app/").shortLabel())
+    }
+
+    @Test
+    fun branchScopeKeysPerBranchAndRoot() {
+        assertEquals("branch:main", Scope(ScopeKind.BRANCH, head = "main").key())
+        assertEquals("branch:main@src/app/", Scope(ScopeKind.BRANCH, head = "main", root = "src/app/").key())
+        assertEquals("branch:HEAD", Scope(ScopeKind.BRANCH).key())
+        assertFalse(ScopeKind.BRANCH.followsChangeList)
+        assertFalse(ScopeKind.RANGE.followsChangeList)
+        assertTrue(ScopeKind.UNCOMMITTED.followsChangeList)
+        assertTrue(Scope(ScopeKind.BRANCH, head = "main").describe().contains("branch main"))
+    }
+
+    @Test
+    fun contentHashFoldsLineEndingsAndMatchesSha1Prefix() {
+        val h = ContentHash.of("a\nb\n")
+        assertEquals(h, ContentHash.of("a\r\nb\r\n"))
+        assertEquals(h, ContentHash.of("a\rb\r"))
+        assertEquals(h, ContentHash.of(StringBuilder("a\nb\n")))
+        assertEquals(16, h.length)
+        // SHA-1("a\nb\n") = 0ee4a75d5c1e7c8... (first 16 hex chars), unchanged from the String-based implementation.
+        val md = java.security.MessageDigest.getInstance("SHA-1")
+        val expected = md.digest("a\nb\n".toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }.take(16)
+        assertEquals(expected, h)
+        assertEquals(expected.length, ContentHash.of("").length)
+        assertEquals(ContentHash.of("é\n"), ContentHash.of("é\r\n"))
     }
 
     @Test

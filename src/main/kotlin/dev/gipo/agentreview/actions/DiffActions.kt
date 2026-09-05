@@ -31,9 +31,14 @@ import dev.gipo.agentreview.ui.Notifications
 import javax.swing.JComponent
 
 private fun AnActionEvent.binding(): EditorReviewBinding? {
+    if (!EditorReviewBinding.annotationsEnabled) return null
     val editor = getData(DiffDataKeys.CURRENT_EDITOR) ?: getData(CommonDataKeys.EDITOR) ?: return null
     return editor.getUserData(EditorReviewBinding.KEY)
 }
+
+/** Off means Nitpick is invisible in editors: shortcuts fired there do nothing. The tool window keeps working. */
+internal fun AnActionEvent.hiddenInEditor(): Boolean =
+    !EditorReviewBinding.annotationsEnabled && (getData(DiffDataKeys.CURRENT_EDITOR) ?: getData(CommonDataKeys.EDITOR)) != null
 
 /** Path of the file under review: from the diff binding, or the change under the cursor. */
 internal fun AnActionEvent.reviewPath(): String? {
@@ -54,6 +59,7 @@ class EditFileCommentsGroup : ActionGroup("Edit Comment", true), DumbAware {
 
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         val project = e?.project ?: return emptyArray()
+        if (e.hiddenInEditor()) return emptyArray()
         val path = e.reviewPath() ?: return emptyArray()
         val comments = ReviewChangesModel.getInstance(project).commentsFor(path)
         return comments.map { c ->
@@ -92,7 +98,7 @@ class AddCommentAction : DiffReviewAction() {
 
 class AddFileCommentAction : DiffReviewAction() {
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project != null && e.reviewPath() != null && e.folderPath() == null
+        e.presentation.isEnabledAndVisible = e.project != null && !e.hiddenInEditor() && e.reviewPath() != null && e.folderPath() == null
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -146,7 +152,7 @@ class AddFolderCommentAction : DiffReviewAction() {
 class ToggleReviewedAction : DiffReviewAction() {
     override fun update(e: AnActionEvent) {
         val project = e.project
-        val paths = e.reviewPaths()
+        val paths = if (e.hiddenInEditor()) emptyList() else e.reviewPaths()
         e.presentation.isEnabledAndVisible = project != null && paths.isNotEmpty()
         if (project == null || paths.isEmpty()) return
         val model = ReviewChangesModel.getInstance(project)
@@ -178,9 +184,14 @@ class ToggleReviewedAction : DiffReviewAction() {
         fun toggleReviewed(project: Project, path: String, binding: EditorReviewBinding?, fallbackHash: (() -> String?)? = null): ReviewState {
             val store = ReviewStore.getInstance(project)
             val model = ReviewChangesModel.getInstance(project)
-            val hash = model.find(path)?.hash
-                ?: binding?.takeIf { it.primarySide == Side.NEW }?.let { ContentHash.of(it.editor.document.charsSequence) }
-                ?: fallbackHash?.invoke()
+            val rc = model.find(path)
+            val docHash = binding?.takeIf { it.primarySide == Side.NEW }?.let { ContentHash.of(it.editor.document.charsSequence) }
+            // Branch mode: the open document is the truth, the model's cached hash may predate unsaved edits.
+            val hash = when {
+                rc == null -> docHash
+                rc.tracksWorkingFile -> docHash ?: rc.hash
+                else -> rc.hash ?: docHash
+            } ?: fallbackHash?.invoke()
             val current = store.session.reviewState(path, hash)
             return if (current == ReviewState.REVIEWED) {
                 store.setReviewed(path, null); ReviewState.UNREVIEWED
@@ -195,7 +206,7 @@ class ToggleReviewedAction : DiffReviewAction() {
 class NextUnreviewedAction : AnAction(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project != null
+        e.presentation.isEnabledAndVisible = e.project != null && !e.hiddenInEditor()
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -213,7 +224,7 @@ class NextUnreviewedAction : AnAction(), DumbAware {
 class PrevUnreviewedAction : AnAction(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project != null
+        e.presentation.isEnabledAndVisible = e.project != null && !e.hiddenInEditor()
     }
 
     override fun actionPerformed(e: AnActionEvent) {

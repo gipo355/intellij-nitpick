@@ -2,6 +2,7 @@ package dev.gipo.agentreview.diff
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
@@ -12,6 +13,7 @@ import com.intellij.openapi.editor.markup.HighlighterTargetArea
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.ui.JBColor
@@ -19,7 +21,10 @@ import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ContentHash
 import dev.gipo.agentreview.model.ReviewSession
 import dev.gipo.agentreview.model.Side
+import dev.gipo.agentreview.scope.ChangesListener
 import dev.gipo.agentreview.scope.ReviewChangesModel
+import dev.gipo.agentreview.scope.ReviewedChange
+import dev.gipo.agentreview.settings.AgentReviewSettings
 import dev.gipo.agentreview.store.ReviewListener
 import dev.gipo.agentreview.store.ReviewStore
 import javax.swing.Icon
@@ -50,13 +55,22 @@ class EditorReviewBinding(
     private val inlays = mutableListOf<Inlay<*>>()
     private val highlighters = mutableListOf<RangeHighlighter>()
 
+    /** What the last render drew, and on which document stamp; the same again skips the inlay rebuild. */
+    private var rendered: List<Comment>? = null
+    private var renderedStamp = -1L
+
     init {
         editor.putUserData(KEY, this)
         Disposer.register(parent, this)
-        project.messageBus.connect(this).subscribe(ReviewListener.TOPIC, object : ReviewListener {
+        val bus = project.messageBus.connect(this)
+        bus.subscribe(ReviewListener.TOPIC, object : ReviewListener {
             override fun sessionChanged(session: ReviewSession) = render()
         })
-        render()
+        bus.subscribe(ChangesListener.TOPIC, object : ChangesListener {
+            override fun changesUpdated(changes: List<ReviewedChange>) = render()
+            override fun hashesChanged() = render()
+        })
+        render(force = true)
         AddCommentGutterHover(editor, this) { line -> addCommentAt(line) }
     }
 
@@ -71,22 +85,37 @@ class EditorReviewBinding(
         }
     }
 
-    /** Hash of the side's file as the scope model sees it, else of this editor's document. */
+    /**
+     * Hash of the side's file as the scope model sees it, else of this editor's document. When the model
+     * tracks the working file (branch mode) the document wins: it is what the user is looking at.
+     */
     fun contentHash(side: Side): String? {
         val rc = ReviewChangesModel.getInstance(project).find(path)
         return when {
-            rc != null -> if (side == Side.NEW) rc.hash else rc.beforeHash
+            rc != null && !(rc.tracksWorkingFile && side == primarySide) -> if (side == Side.NEW) rc.hash else rc.beforeHash
             side == primarySide -> ContentHash.of(editor.document.charsSequence)
             else -> null
         }
     }
 
-    fun render() {
+    /** Redraws comments. Without [force], nothing happens when neither the placed comments nor the document changed. */
+    fun render(force: Boolean = false) {
         if (editor.isDisposed) return
-        clear()
         consumePendingScroll()
+        if (!annotationsEnabled) {
+            clear()
+            rendered = null
+            return
+        }
+        val comments = ReviewChangesModel.getInstance(project).commentsFor(path)
+        // A reload from disk (agent edit, checkout) moves the inlays' markers: a new stamp means redraw.
+        val stamp = editor.document.modificationStamp
+        if (!force && comments == rendered && stamp == renderedStamp) return
+        rendered = comments
+        renderedStamp = stamp
+        clear()
         val doc = editor.document
-        for (c in ReviewChangesModel.getInstance(project).commentsFor(path)) {
+        for (c in comments) {
             if (c.outdated) continue
             val startLine = c.startLine
             if (startLine == null) {
@@ -111,7 +140,7 @@ class EditorReviewBinding(
         EditorEmbeddedComponentManager.getInstance().addComponent(editor, panel, props)?.let { inlays += it }
     }
 
-    private fun rerender() = render()
+    private fun rerender() = render(force = true)
 
     private fun consumePendingScroll() {
         val model = dev.gipo.agentreview.scope.ReviewChangesModel.getInstance(project)
@@ -188,6 +217,16 @@ class EditorReviewBinding(
 
     companion object {
         val KEY: Key<EditorReviewBinding> = Key.create("AgentReview.EditorBinding")
+
+        /** Global switch for everything a binding draws or offers: cards, gutter "+", toolbar and popup entries. */
+        val annotationsEnabled: Boolean get() = AgentReviewSettings.getInstance().state.editorAnnotations
+
+        fun setAnnotationsEnabled(enabled: Boolean) {
+            AgentReviewSettings.getInstance().state.editorAnnotations = enabled
+            // Branch mode: off drops the editor bindings altogether, on rebinds. Diff viewers keep theirs and redraw.
+            ProjectManager.getInstance().openProjects.forEach { if (!it.isDisposed) BranchEditorBinder.getInstance(it).sync() }
+            EditorFactory.getInstance().allEditors.forEach { it.getUserData(KEY)?.render(force = true) }
+        }
         private val COMMENT_BG = JBColor(0xFFF4D6, 0x4A4429)
         private val RESOLVED_BG = JBColor(0xE6F4E6, 0x2F3F2F)
     }

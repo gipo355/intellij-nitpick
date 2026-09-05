@@ -41,7 +41,9 @@ class AgentReviewToolset : McpToolset {
         Each comment has a location `path:line` (or `path:start-end`, `~` marks the old side) and text.
         After fixing items, call agent_review_resolve_comments with their ids (use format=json to get ids).
         JSON carries the scope: scope_kind is one of uncommitted, staged, unstaged (working tree, base/head null),
-        range (git diff base..head; base may be a merge-base hash) or commit (single commit in head).""",
+        range (git diff base..head; base may be a merge-base hash), commit (single commit in head), or branch:
+        no diff, the human annotated the checked-out tree (head = branch name, root = folder or null, base = HEAD
+        when the plan started). Treat branch comments as a plan for a change, not as a review of one.""",
     )
     suspend fun agent_review_get_review(
         @McpDescription("\"markdown\" or \"json\"") format: String = "markdown",

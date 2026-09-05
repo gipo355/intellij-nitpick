@@ -40,7 +40,11 @@ import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer
 import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
+import com.intellij.openapi.project.guessProjectDir
+import dev.gipo.agentreview.diff.BranchEditorBinder
+import dev.gipo.agentreview.diff.EditorReviewBinding
 import com.intellij.openapi.fileChooser.FileChooserFactory
 import com.intellij.openapi.fileChooser.FileSaverDescriptor
 import com.intellij.openapi.vfs.VirtualFile
@@ -113,8 +117,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private var suppressNotes = false
     private var shown: List<String> = emptyList()
 
+    /** Notes are written to the store after a pause, not per keystroke: every editor binding listens to the store. */
+    private val notesAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    private var notesDirty = false
+    private var notesKey: String = ""
+
     init {
         Disposer.register(parent, this)
+        // Exists from now on, so a switch to branch mode binds the already open editors.
+        BranchEditorBinder.getInstance(project)
         browser.setChangeNodeDecorator(ReviewDecorator())
         // The decorator only sees file nodes. Folder nodes get their comment badge here.
         browser.viewer.cellRenderer = object : ChangesBrowserNodeRenderer(project, { browser.viewer.isShowFlatten }, false) {
@@ -136,11 +147,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 "Nitpick" + (wrapper?.presentableName?.let { ": $it" } ?: "")
 
             override fun handleDoubleClick(e: MouseEvent): Boolean {
+                if (model.isBranchMode) return openSelectedSource(focus = true)
                 syncPreviewToSelection(handler)
                 return super.handleDoubleClick(e)
             }
 
             override fun handleEnterKey(): Boolean {
+                if (model.isBranchMode) return openSelectedSource(focus = true)
                 syncPreviewToSelection(handler)
                 return super.handleEnterKey()
             }
@@ -162,6 +175,10 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount != 1 || !AgentReviewSettings.getInstance().state.openDiffOnSingleClick) return
                 if (browser.viewer.getPathForLocation(e.x, e.y) == null || browser.selectedChanges.isEmpty()) return
+                if (model.isBranchMode) {
+                    openSelectedSource(focus = false)
+                    return
+                }
                 ApplicationManager.getApplication().invokeLater({ preview.openPreview(false) }, project.disposed)
             }
         })
@@ -197,7 +214,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
         commentsList.cellRenderer = CommentRenderer()
         commentsList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        commentsList.emptyText.text = "No comments yet. Open a diff and press Alt+Shift+C."
+        commentsList.emptyText.text = "No comments yet. Open a file and press Alt+Shift+C, or click + in the gutter."
         commentsList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) commentsList.selectedValue?.let { open(it) }
@@ -218,7 +235,11 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
         notes.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
             override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
-                if (!suppressNotes) store.setNotes(notes.text)
+                if (suppressNotes) return
+                notesDirty = true
+                notesKey = store.currentKey
+                notesAlarm.cancelAllRequests()
+                notesAlarm.addRequest({ flushNotes() }, 400)
             }
         })
 
@@ -270,17 +291,74 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             autoRefresh.cancelAllRequests()
             autoRefresh.addRequest({ model.refresh() }, 1000, ModalityState.nonModal())
         }
+        // Commits, ranges and the branch tree do not change when the changelist does. Saves in branch
+        // mode reach the model through the VFS instead.
         bus.subscribe(ChangeListListener.TOPIC, object : ChangeListListener {
-            override fun changeListUpdateDone() = scheduleRefresh()
+            override fun changeListUpdateDone() {
+                if (store.session.scope.kind.followsChangeList) scheduleRefresh()
+            }
         })
-        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { scheduleRefresh() })
+        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { _ ->
+            val scope = store.session.scope
+            if (scope.kind != ScopeKind.BRANCH) {
+                scheduleRefresh()
+            } else {
+                // The tree comes from the VFS, so a commit or fetch changes nothing. A checkout of a named
+                // branch (first repository, whichever repo fired) switches to that branch's session.
+                // A detached HEAD is not followed: every commit there would open a new session.
+                val branch = ScopeChanges.currentBranchName(project)
+                if (branch != null && branch != scope.head) {
+                    ApplicationManager.getApplication().invokeLater({ setBranchScope(scope.root) }, ModalityState.nonModal(), project.disposed)
+                }
+            }
+        })
         refreshUi()
         model.refresh()
+    }
+
+    /** Opens the selected tree file in its editor. Branch mode has no diff to show. */
+    private fun openSelectedSource(focus: Boolean): Boolean {
+        val change = browser.selectedChanges.firstOrNull() ?: return false
+        return model.openSource(ReviewPaths.relative(project, change), focus = focus)
+    }
+
+    private fun flushNotes() {
+        notesAlarm.cancelAllRequests()
+        if (!notesDirty) return
+        notesDirty = false
+        if (notesKey != store.currentKey) return
+        if (notes.text != store.session.notes) store.setNotes(notes.text)
+    }
+
+    /**
+     * Branch mode on whatever is checked out, whole project or [root]. The HEAD hash at the time the plan
+     * starts is kept in `base` (an existing session keeps its own), so the agent can diff since then.
+     */
+    private fun setBranchScope(root: String?) {
+        runInBackground({ ScopeChanges.currentBranch(project) to ScopeChanges.headHash(project) }) { (branch, hash) ->
+            val fresh = Scope(ScopeKind.BRANCH, base = hash, head = branch ?: "HEAD", root = root)
+            val existing = store.savedSessions().firstOrNull { it.scope.key() == fresh.key() }?.scope
+            flushNotes()
+            store.setScope(if (existing?.base != null) fresh.copy(base = existing.base) else fresh)
+            model.refresh()
+        }
+    }
+
+    private fun <T> runInBackground(compute: () -> T, onDone: (T) -> Unit) {
+        AppExecutorUtil.getAppExecutorService().execute {
+            val result = compute()
+            ApplicationManager.getApplication().invokeLater({ onDone(result) }, ModalityState.defaultModalityState(), project.disposed)
+        }
     }
 
     private fun createToolbar(): JComponent {
         val group = DefaultActionGroup().apply {
             add(ScopeCombo())
+            add(object : ToggleAction("Editor Annotations", "Show comment cards, the gutter + and the review buttons in diffs and editors. Off keeps the scope.", AllIcons.Actions.Show), DumbAware {
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                override fun isSelected(e: AnActionEvent): Boolean = EditorReviewBinding.annotationsEnabled
+                override fun setSelected(e: AnActionEvent, state: Boolean) = EditorReviewBinding.setAnnotationsEnabled(state)
+            })
             add(object : AnAction("Refresh", "Re-collect changes", AllIcons.Actions.Refresh), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = model.refresh()
             })
@@ -432,7 +510,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val commentFilter = AgentReviewSettings.getInstance().state.commentFilter
         val comments = model.comments().filter { commentFilter.shows(it) }
         comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
-        if (notes.text != session.notes) {
+        if (notesDirty && notesKey != store.currentKey) {
+            // Edits meant for another session: the scope changed under them, drop rather than misfile.
+            notesDirty = false
+            notesAlarm.cancelAllRequests()
+        }
+        if (!notesDirty && notes.text != session.notes) {
             suppressNotes = true
             notes.text = session.notes
             suppressNotes = false
@@ -486,6 +569,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     }
 
     override fun dispose() {
+        flushNotes()
         model.diffOpener = null
     }
 
@@ -636,6 +720,16 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     setScope(Scope(ScopeKind.COMMIT, head = hash.trim()))
                 }
             })
+            group.add(object : AnAction("Stash…", "Review a stash as the diff against the commit it was taken on", null), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = chooseStash(e)
+            })
+            group.add(Separator.create("No Diff"))
+            group.add(object : AnAction("Current Branch, Whole Tree", "Annotate any file on the checked-out branch. Clicking a file opens it in the editor.", null), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = setBranchScope(null)
+            })
+            group.add(object : AnAction("Current Branch, Folder…", "Same, limited to one folder of the project", null), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = chooseFolder()
+            })
             val saved = store.savedSessions()
             if (saved.size > 1) {
                 group.add(Separator.create("Saved Sessions"))
@@ -666,8 +760,34 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
 
         private fun setScope(scope: Scope) {
+            flushNotes()
             store.setScope(scope)
             model.refresh()
+        }
+
+        private fun chooseFolder() {
+            val base = project.guessProjectDir()
+            val descriptor = FileChooserDescriptor(false, true, false, false, false, false).withTitle("Folder to Annotate")
+            if (base != null) descriptor.withRoots(base)
+            val dir = FileChooser.chooseFile(descriptor, project, base) ?: return
+            setBranchScope(ReviewPaths.relative(project, dir.path).trimEnd('/') + "/")
+        }
+
+        private fun chooseStash(e: AnActionEvent) {
+            val component = e.inputEvent?.component ?: this@ReviewToolWindowPanel
+            runInBackground({ ScopeChanges.stashes(project) }) { stashes ->
+                if (stashes.isEmpty()) {
+                    Notifications.info(project, "No stashes", "git stash list is empty.")
+                    return@runInBackground
+                }
+                JBPopupFactory.getInstance().createPopupChooserBuilder(stashes)
+                    .setTitle("Review Stash")
+                    .setRenderer(textListCellRenderer { "${it.first}  ${it.second}" })
+                    .setNamerForFiltering { "${it.first} ${it.second}" }
+                    .setItemChosenCallback { setScope(ScopeChanges.stashScope(it.first)) }
+                    .createPopup()
+                    .showUnderneathOf(component)
+            }
         }
 
         private fun chooseBranch(e: AnActionEvent) {
@@ -696,13 +816,6 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                         setScope(Scope(ScopeKind.RANGE, base = mb, head = head, baseLabel = "merge-base($ref)"))
                     }
                 }
-        }
-
-        private fun <T> runInBackground(compute: () -> T, onDone: (T) -> Unit) {
-            AppExecutorUtil.getAppExecutorService().execute {
-                val result = compute()
-                ApplicationManager.getApplication().invokeLater({ onDone(result) }, ModalityState.defaultModalityState(), project.disposed)
-            }
         }
     }
 }

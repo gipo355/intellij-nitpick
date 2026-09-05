@@ -56,3 +56,43 @@ class CommentPlacerTest {
         assertEquals(1, placed[2].startLine)
     }
 }
+
+class ReviewedChangeTest {
+    @Test
+    fun lazyLoadsOnceAndInvalidateRereads() {
+        var reads = 0
+        var text = "one\n"
+        val rc = ReviewedChange(path = "a.kt", after = { reads++; text })
+        assertFalse(rc.isHashed)
+        assertEquals(0, reads)
+        val h1 = rc.hash
+        assertEquals(h1, rc.hash)
+        assertTrue(rc.isHashed)
+        assertEquals(1, reads)
+        assertEquals("one\n", rc.text)
+        text = "two\n"
+        assertEquals(h1, rc.hash)
+        rc.invalidate()
+        assertFalse(rc.isHashed)
+        assertEquals(ContentHash.of("two\n"), rc.hash)
+        assertEquals("two\n", rc.text)
+    }
+
+    @Test
+    fun presetHashWinsOverContent() {
+        val rc = ReviewedChange(path = "a.kt", hash = "h", beforeHash = null, content = "x", beforeContent = null)
+        assertEquals("h", rc.hash)
+        assertNull(rc.beforeHash)
+        assertEquals("x", rc.text)
+        assertFalse(rc.tracksWorkingFile)
+    }
+
+    @Test
+    fun placementNormalizesCrLfOncePerChange() {
+        val content = "a\r\nb\r\nc\r\n"
+        val moved = Comment(path = "a.kt", startLine = 9, endLine = 9, contentHash = "old", snippet = "c")
+        val placed = CommentPlacer.place(listOf(moved), listOf(ReviewedChange(path = "a.kt", after = { content })), "k")
+        assertEquals(3, placed.single().startLine)
+        assertFalse(placed.single().outdated)
+    }
+}

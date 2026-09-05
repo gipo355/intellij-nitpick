@@ -49,7 +49,7 @@ class AddCommentGutterHover(
         highlighter?.let { editor.markupModel.removeHighlighter(it) }
         highlighter = null
         val doc = editor.document
-        if (line < 0 || line >= doc.lineCount || editor.isDisposed) return
+        if (line < 0 || line >= doc.lineCount || editor.isDisposed || !EditorReviewBinding.annotationsEnabled) return
         val h = editor.markupModel.addRangeHighlighter(
             doc.getLineStartOffset(line), doc.getLineEndOffset(line),
             HighlighterLayer.LAST, null, HighlighterTargetArea.LINES_IN_RANGE,

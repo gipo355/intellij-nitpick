@@ -3,6 +3,7 @@ package dev.gipo.agentreview.export
 import dev.gipo.agentreview.model.Author
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ReviewSession
+import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.model.commentOrder
 
 data class ExportOptions(
@@ -17,6 +18,9 @@ data class ExportOptions(
 ) {
     companion object {
         const val DEFAULT_INTRO = "I reviewed your code and have the following comments. Please address them."
+        /** Branch mode: the comments are a plan on unchanged code, not a review of a diff. */
+        const val PLAN_INTRO = "I annotated the codebase with notes for a change I want to make. " +
+            "Treat them as the plan: implement what they ask, in the order that makes sense, and keep the notes' intent."
         const val MCP_HINT = "If you have the agent_review MCP tools: call agent_review_list_comments for ids, " +
             "fix the items, then agent_review_resolve_comments with a one-line reply each (wont_fix for pushback). " +
             "Answer a QUESTION with agent_review_reply, ask with agent_review_add_comment when a comment is unclear. " +
@@ -34,9 +38,11 @@ object MarkdownExporter {
         val located = comments.filter { !it.isReviewLevel }
 
         val sb = StringBuilder()
-        sb.append(options.intro).append("\n\n")
+        val planning = session.scope.kind == ScopeKind.BRANCH
+        sb.append(if (planning && options.intro == ExportOptions.DEFAULT_INTRO) ExportOptions.PLAN_INTRO else options.intro).append("\n\n")
         sb.append("Scope: ").append(session.scope.describe())
-        options.branch?.let { sb.append(" on `").append(it).append('`') }
+        if (!planning) options.branch?.let { sb.append(" on `").append(it).append('`') }
+        if (planning) session.scope.base?.let { sb.append(", plan started at `").append(it.take(8)).append("` (git diff ").append(it.take(8)).append("..HEAD shows what changed since)") }
         sb.append("\n\n")
         if (options.mcpHint) sb.append(ExportOptions.MCP_HINT).append("\n\n")
 
