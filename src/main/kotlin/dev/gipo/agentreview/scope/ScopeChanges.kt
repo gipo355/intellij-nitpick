@@ -1,6 +1,6 @@
 package dev.gipo.agentreview.scope
 
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vcs.FilePath
@@ -57,19 +57,21 @@ object ScopeChanges {
      */
     private fun branchTree(project: Project, root: String?): List<Change> {
         val index = ProjectFileIndex.getInstance(project)
-        val files = ArrayList<VirtualFile>()
-        val iterator = ContentIterator { vf ->
-            if (!vf.isDirectory && !vf.fileType.isBinary && !index.isInLibrary(vf)) files += vf
-            true
-        }
-        runReadAction {
+        // Cancellable: a write action restarts the walk instead of waiting, so the list is built per attempt.
+        val files = ReadAction.nonBlocking<List<VirtualFile>> {
+            val found = ArrayList<VirtualFile>()
+            val iterator = ContentIterator { vf ->
+                if (!vf.isDirectory && !vf.fileType.isBinary && !index.isInLibrary(vf)) found += vf
+                true
+            }
             val dir = root?.let { rootDir(project, it) }
             if (root == null) {
                 index.iterateContent(iterator)
             } else if (dir != null) {
                 index.iterateContentUnderDirectory(dir, iterator)
             }
-        }
+            found
+        }.executeSynchronously()
         return files.map { Change(null, CurrentContentRevision(VcsUtil.getFilePath(it))) }
     }
 
@@ -124,6 +126,10 @@ object ScopeChanges {
     /** Full hash of HEAD, or null outside git. */
     fun headHash(project: Project): String? =
         GitRepositoryManager.getInstance(project).repositories.firstOrNull()?.currentRevision
+
+    /** Checked-out branch of the first repository; null on a detached HEAD or outside git. */
+    fun currentBranchName(project: Project): String? =
+        GitRepositoryManager.getInstance(project).repositories.firstOrNull()?.currentBranchName
 
     fun currentBranch(project: Project): String? {
         val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return null

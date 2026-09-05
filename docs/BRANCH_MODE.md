@@ -37,7 +37,8 @@ about too; the first two already existed, stash is a range.
   directories, binary files and libraries, wrap each file as
   `Change(null, CurrentContentRevision(path))`. Sorted by path like every
   other scope, so the existing tree, filters, folder comments and Next
-  Unreviewed work unchanged.
+  Unreviewed work unchanged. The walk is a cancellable read action: a write
+  action restarts it instead of waiting for it.
 - Tool window: *Current Branch, Whole Tree*, *Current Branch, Folder…*,
   *Stash…*. In branch mode single click, double click, Enter and every
   navigation open the source file (`OpenFileDescriptor`) instead of the
@@ -48,7 +49,9 @@ about too; the first two already existed, stash is a range.
   entries). Any other scope tears all of them down. Ordinary coding never
   sees Nitpick in editors.
 - Checkout follows: `GIT_REPO_CHANGE` with a different branch name switches
-  to that branch's session (created if new).
+  to that branch's session (created if new). A detached HEAD is not followed
+  (every commit there would be a new session). Other repository events do
+  nothing in branch mode: the tree comes from the VFS, not from git.
 - Export: Markdown uses a planning intro when the intro setting is the
   default, names the start commit and suggests `git diff <start>..HEAD`.
   JSON and the MCP description carry `scope_kind: branch`, `head`, `root`,
@@ -74,12 +77,14 @@ The full tree exposed costs that were already there:
    `sessionChanged` per keystroke and every binding rebuilt its inlays.
    Notes are now flushed after 400 ms, keyed to the session they were typed
    in, and `EditorReviewBinding.render()` skips when the placed comments for
-   its file are unchanged. Diff rediffs still force a redraw.
+   its file and the document stamp are unchanged (a reload from disk moves
+   the inlay markers, so it redraws). Diff rediffs still force a redraw.
 5. **Immutable scopes refreshed on every changelist update.** Only
    uncommitted, staged and unstaged follow `changeListUpdateDone`. Branch
    mode listens to `VFS_CHANGES`: a content change invalidates that file's
    cached hash and repaints; create, delete, move and rename schedule a
-   refresh.
+   refresh. Repository events (commit, fetch) do not refresh the branch tree
+   either; only a checkout does, through the session switch.
 6. **`ContentHash.of` made four copies.** One normalizing pass into a char
    array, one encode. Same output, marks stay valid.
 

@@ -52,8 +52,9 @@ class EditorReviewBinding(
     private val inlays = mutableListOf<Inlay<*>>()
     private val highlighters = mutableListOf<RangeHighlighter>()
 
-    /** What the last render drew; an identical list skips the inlay rebuild (notes typing, other files' comments). */
+    /** What the last render drew, and on which document stamp; the same again skips the inlay rebuild. */
     private var rendered: List<Comment>? = null
+    private var renderedStamp = -1L
 
     init {
         editor.putUserData(KEY, this)
@@ -94,13 +95,16 @@ class EditorReviewBinding(
         }
     }
 
-    /** Redraws comments. Without [force], nothing happens when the placed comments did not change. */
+    /** Redraws comments. Without [force], nothing happens when neither the placed comments nor the document changed. */
     fun render(force: Boolean = false) {
         if (editor.isDisposed) return
         val comments = ReviewChangesModel.getInstance(project).commentsFor(path)
         consumePendingScroll()
-        if (!force && comments == rendered) return
+        // A reload from disk (agent edit, checkout) moves the inlays' markers: a new stamp means redraw.
+        val stamp = editor.document.modificationStamp
+        if (!force && comments == rendered && stamp == renderedStamp) return
         rendered = comments
+        renderedStamp = stamp
         clear()
         val doc = editor.document
         for (c in comments) {

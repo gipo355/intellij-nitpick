@@ -299,13 +299,16 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { _ ->
             val scope = store.session.scope
-            // The first repository's branch, whichever repo (a submodule, say) fired the event.
-            val branch = ScopeChanges.currentBranch(project)
-            if (scope.kind == ScopeKind.BRANCH && branch != null && branch != scope.head) {
-                // Checkout: the plan follows the branch, each branch keeps its own marks and notes.
-                ApplicationManager.getApplication().invokeLater({ setBranchScope(scope.root) }, ModalityState.nonModal(), project.disposed)
-            } else {
+            if (scope.kind != ScopeKind.BRANCH) {
                 scheduleRefresh()
+            } else {
+                // The tree comes from the VFS, so a commit or fetch changes nothing. A checkout of a named
+                // branch (first repository, whichever repo fired) switches to that branch's session.
+                // A detached HEAD is not followed: every commit there would open a new session.
+                val branch = ScopeChanges.currentBranchName(project)
+                if (branch != null && branch != scope.head) {
+                    ApplicationManager.getApplication().invokeLater({ setBranchScope(scope.root) }, ModalityState.nonModal(), project.disposed)
+                }
             }
         })
         refreshUi()
