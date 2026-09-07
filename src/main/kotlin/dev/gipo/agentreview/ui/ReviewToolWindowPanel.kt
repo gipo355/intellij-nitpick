@@ -54,6 +54,7 @@ import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
+import dev.gipo.agentreview.diff.CommentInlayPanel
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
@@ -114,6 +115,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     }
     private val commentsModel = DefaultListModel<Comment>()
     private val commentsList = JBList(commentsModel)
+    /** Card of the selected comment: the only place a file or folder comment's thread is readable in full. */
+    private val detail = JPanel(BorderLayout()).apply { isOpaque = false }
     private val status = JBLabel()
     private val notes = vimReadyTextField(project, "").apply { setPlaceholder("Review-level notes for the agent…") }
     private var suppressNotes = false
@@ -264,9 +267,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             bar.targetComponent = commentsList
             add(bar.component, BorderLayout.EAST)
         }
+        commentsList.addListSelectionListener { if (!it.valueIsAdjusting) showDetail() }
         val commentsPane = JPanel(BorderLayout()).apply {
             add(commentsHeader, BorderLayout.NORTH)
-            add(JBScrollPane(commentsList), BorderLayout.CENTER)
+            add(OnePixelSplitter(true, "Nitpick.commentDetailSplit", 0.6f).apply {
+                firstComponent = JBScrollPane(commentsList)
+                secondComponent = JBScrollPane(detail)
+            }, BorderLayout.CENTER)
         }
         val notesPane = JPanel(BorderLayout()).apply {
             add(JBLabel("Notes for the agent").apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
@@ -541,14 +548,24 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         browser.setChangesToDisplay(visible.mapNotNull { it.change }, KeepExpansionAndSelection)
     }
 
+    private fun showDetail() {
+        detail.removeAll()
+        commentsList.selectedValue?.let { detail.add(CommentInlayPanel(project, it, ::refreshUi), BorderLayout.NORTH) }
+        detail.revalidate()
+        detail.repaint()
+    }
+
     private fun refreshUi() {
         val session = store.session
         showChanges()
         browser.viewer.repaint()
+        val selectedId = commentsList.selectedValue?.id
         commentsModel.clear()
         val commentFilter = AgentReviewSettings.getInstance().state.commentFilter
         val comments = model.comments().filter { commentFilter.shows(it) }
         comments.sortedWith(commentOrder).forEach { commentsModel.addElement(it) }
+        // Reselecting fires the selection listener, which rebuilds the card with the fresh comment.
+        (0 until commentsModel.size).firstOrNull { commentsModel[it].id == selectedId }?.let { commentsList.selectedIndex = it }
         if (notesDirty && notesKey != store.currentKey) {
             // Edits meant for another session: the scope changed under them, drop rather than misfile.
             notesDirty = false
