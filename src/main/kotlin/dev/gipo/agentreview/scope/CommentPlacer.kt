@@ -6,12 +6,17 @@ import dev.gipo.agentreview.model.Side
 /** Where a comment shows in the current scope. Comments are anchored to text, not to a scope. */
 object CommentPlacer {
 
-    fun place(all: List<Comment>, changes: List<ReviewedChange>, currentKey: String): List<Comment> {
+    /** Own session, or both sessions live. */
+    fun visible(c: Comment, currentKey: String, liveKeys: Set<String>): Boolean =
+        c.sessionKey == currentKey || (currentKey in liveKeys && c.sessionKey in liveKeys)
+
+    fun place(all: List<Comment>, changes: List<ReviewedChange>, currentKey: String, liveKeys: Set<String> = setOf(currentKey)): List<Comment> {
         if (all.isEmpty()) return all
         val byPath = HashMap<String, ReviewedChange>(changes.size * 2)
         for (rc in changes) byPath.putIfAbsent(rc.path, rc)
         return all.mapNotNull { c ->
-            if (c.isReviewLevel) return@mapNotNull c.takeIf { it.scopeKey == currentKey }
+            if (!visible(c, currentKey, liveKeys)) return@mapNotNull null
+            if (c.isReviewLevel) return@mapNotNull c
             if (c.isFolderLevel) return@mapNotNull c.takeIf { changes.any { rc -> rc.path.startsWith(c.path) } }
             val rc = byPath[c.path] ?: changes.firstOrNull { ReviewPaths.matches(it.path, c.path) }
                 ?: return@mapNotNull null

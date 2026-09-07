@@ -63,15 +63,24 @@ diffs inline, mark files reviewed, hand the review to any agent.
 
 ## Data model
 
-- One `ReviewSession` per scope key (`Scope.key()`), all in `ReviewStorage`,
+- Sessions live in `ReviewStorage` keyed by `ReviewSession.key`: `Scope.key()`
+  plus `#n` past generation 1. "New Session" bumps the generation of the current
+  scope. The newest generation of each scope is *live*; older ones are
+  superseded. `setScope` lands on the live one, `setCurrent(key)` on any.
+- One `ReviewSession` per key, all in `ReviewStorage`,
   persisted as JSON in workspace.xml via `ReviewStore`. Legacy single-session
   JSON (no `sessions` key) still loads.
-- Comments are project-wide in `ReviewStorage.comments`, anchored by path,
+- Comments sit in `ReviewStorage.comments` with a `sessionKey` (wire name
+  `scopeKey`). `CommentPlacer.visible`: own session, or both sessions live.
+  Live sessions share comments across scopes; a superseded session is an
+  island. Deleting a session deletes its comments. Anchored by path,
   side, line, `contentHash` and `snippet`. `CommentPlacer` places them per
   scope (same line, relocated by unique snippet match, or `outdated`). Read
   them through `ReviewChangesModel.comments()`, never from sessions.
   Pre-0.2.1 per-session comments are migrated on load.
-- Sessions hold scope, reviewed marks and notes. Marks carry over between
+- Sessions hold scope, generation, reviewed marks and notes. Marks carry over
+  from live sessions of other scopes only (`otherSessions()`); a superseded
+  session inherits nothing. Marks carry over between
   sessions by hash at refresh.
 - Reviewed marks are `path -> content hash` of the NEW side. Empty string means
   "reviewed, hash unknown" and never goes stale.

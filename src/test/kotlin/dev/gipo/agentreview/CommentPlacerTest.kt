@@ -24,8 +24,8 @@ class CommentPlacerTest {
 
     @Test
     fun folderCommentShowsWhenAChangeLiesUnderIt() {
-        val inside = Comment(path = "src/app/", text = "f")
-        val outside = Comment(path = "docs/", text = "g")
+        val inside = Comment(path = "src/app/", text = "f", sessionKey = "k")
+        val outside = Comment(path = "docs/", text = "g", sessionKey = "k")
         val changes = listOf(ReviewedChange(path = "src/app/a.kt", hash = "h", beforeHash = null, content = null, beforeContent = null))
         val placed = CommentPlacer.place(listOf(inside, outside), changes, currentKey = "k")
         assertEquals(listOf(inside.id), placed.map { it.id })
@@ -37,12 +37,12 @@ class CommentPlacerTest {
     @Test
     fun placeKeepsSameHashRelocatesOrMarksOutdated() {
         val h = ContentHash.of(content)
-        val same = Comment(path = "a.kt", startLine = 2, endLine = 2, contentHash = h, snippet = "b")
-        val moved = Comment(path = "a.kt", startLine = 9, endLine = 9, contentHash = "old", snippet = "c")
-        val gone = Comment(path = "a.kt", startLine = 1, endLine = 1, contentHash = "old", snippet = "zzz")
-        val elsewhere = Comment(path = "other.kt", startLine = 1, contentHash = "old", snippet = "a")
-        val review = Comment(path = "", text = "n", scopeKey = "k")
-        val foreignReview = Comment(path = "", text = "n", scopeKey = "other")
+        val same = Comment(path = "a.kt", startLine = 2, endLine = 2, contentHash = h, snippet = "b", sessionKey = "k")
+        val moved = Comment(path = "a.kt", startLine = 9, endLine = 9, contentHash = "old", snippet = "c", sessionKey = "k")
+        val gone = Comment(path = "a.kt", startLine = 1, endLine = 1, contentHash = "old", snippet = "zzz", sessionKey = "k")
+        val elsewhere = Comment(path = "other.kt", startLine = 1, contentHash = "old", snippet = "a", sessionKey = "k")
+        val review = Comment(path = "", text = "n", sessionKey = "k")
+        val foreignReview = Comment(path = "", text = "n", sessionKey = "other")
         val placed = CommentPlacer.place(
             listOf(same, moved, gone, elsewhere, review, foreignReview),
             listOf(ReviewedChange(path = "a.kt", hash = h, beforeHash = null, content = content, beforeContent = null)),
@@ -54,6 +54,18 @@ class CommentPlacerTest {
         assertFalse(placed[1].outdated)
         assertTrue(placed[2].outdated)
         assertEquals(1, placed[2].startLine)
+    }
+
+    @Test
+    fun liveSessionsShareCommentsSupersededOnesKeepTheirOwn() {
+        val own = Comment(path = "a.kt", text = "own", sessionKey = "uncommitted#2")
+        val live = Comment(path = "a.kt", text = "live", sessionKey = "branch:main")
+        val old = Comment(path = "a.kt", text = "old", sessionKey = "uncommitted")
+        val all = listOf(own, live, old)
+        val changes = listOf(ReviewedChange(path = "a.kt", hash = "h", beforeHash = null, content = null, beforeContent = null))
+        val liveKeys = setOf("uncommitted#2", "branch:main")
+        assertEquals(listOf(own.id, live.id), CommentPlacer.place(all, changes, "uncommitted#2", liveKeys).map { it.id })
+        assertEquals(listOf(old.id), CommentPlacer.place(all, changes, "uncommitted", liveKeys).map { it.id })
     }
 }
 
@@ -90,7 +102,7 @@ class ReviewedChangeTest {
     @Test
     fun placementNormalizesCrLfOncePerChange() {
         val content = "a\r\nb\r\nc\r\n"
-        val moved = Comment(path = "a.kt", startLine = 9, endLine = 9, contentHash = "old", snippet = "c")
+        val moved = Comment(path = "a.kt", startLine = 9, endLine = 9, contentHash = "old", snippet = "c", sessionKey = "k")
         val placed = CommentPlacer.place(listOf(moved), listOf(ReviewedChange(path = "a.kt", after = { content })), "k")
         assertEquals(3, placed.single().startLine)
         assertFalse(placed.single().outdated)

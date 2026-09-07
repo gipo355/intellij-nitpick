@@ -124,6 +124,14 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private var notesDirty = false
     private var notesKey: String = ""
 
+    private val newSessionAction = object : AnAction("New Session", "Start a fresh review of this scope. The current one is kept under Saved Sessions", AllIcons.General.Add), DumbAware {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabled = store.hasContent()
+        }
+        override fun actionPerformed(e: AnActionEvent) = newSession()
+    }
+
     init {
         Disposer.register(parent, this)
         // Exists from now on, so a switch to branch mode binds the already open editors.
@@ -351,7 +359,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private fun setBranchScope(root: String?) {
         runInBackground({ ScopeChanges.currentBranch(project) to ScopeChanges.headHash(project) }) { (branch, hash) ->
             val fresh = Scope(ScopeKind.BRANCH, base = hash, head = branch ?: "HEAD", root = root)
-            val existing = store.savedSessions().firstOrNull { it.scope.key() == fresh.key() }?.scope
+            val existing = store.liveSession(fresh.key())?.scope
             flushNotes()
             store.setScope(if (existing?.base != null) fresh.copy(base = existing.base) else fresh)
             model.refresh()
@@ -365,9 +373,25 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
     }
 
+    /** Next generation of the current scope. A branch scope restarts its plan at the current HEAD. */
+    private fun newSession() {
+        flushNotes()
+        val scope = store.session.scope
+        if (scope.kind != ScopeKind.BRANCH) {
+            store.newSession()
+            model.refresh()
+            return
+        }
+        runInBackground({ ScopeChanges.headHash(project) }) { hash ->
+            store.newSession(scope.copy(base = hash))
+            model.refresh()
+        }
+    }
+
     private fun createToolbar(): JComponent {
         val group = DefaultActionGroup().apply {
             add(ScopeCombo())
+            add(newSessionAction)
             add(object : ToggleAction("Editor Annotations", "Show comment cards, the gutter + and the review buttons in diffs and editors. Off keeps the scope.", AllIcons.Actions.Show), DumbAware {
                 override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
                 override fun isSelected(e: AnActionEvent): Boolean = EditorReviewBinding.annotationsEnabled
@@ -390,7 +414,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(ActionManager.getInstance().getAction("AgentReview.WriteFile"))
             add(ActionManager.getInstance().getAction("AgentReview.SendGroup"))
             add(Separator.getInstance())
-            add(object : AnAction("Export Session…", "Save this scope's marks, notes and comments to a JSON file", AllIcons.ToolbarDecorator.Export), DumbAware {
+            add(newSessionAction)
+            add(object : AnAction("Export Session…", "Save this session's marks, notes and comments to a JSON file", AllIcons.ToolbarDecorator.Export), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = exportSession()
             })
             add(object : AnAction("Import Session…", "Load a session exported by Nitpick", AllIcons.ToolbarDecorator.Import), DumbAware {
@@ -405,7 +430,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             })
             add(object : AnAction("Clear Session", "Delete this scope's comments and reviewed marks", AllIcons.Actions.GC), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val ok = Messages.showYesNoDialog(project, "Delete all comments and reviewed marks of ${store.session.scope.describe()}?", "Clear Review Session", null)
+                    val ok = Messages.showYesNoDialog(project, "Delete all comments and reviewed marks of ${store.session.scope.describe()}${store.session.generationLabel}?", "Clear Review Session", null)
                     if (ok == Messages.YES) store.clear()
                 }
             })
@@ -476,7 +501,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     }
 
     private fun exportSession() {
-        val descriptor = FileSaverDescriptor("Export Review Session", "Marks, notes and comments of ${store.session.scope.describe()}", "json")
+        val descriptor = FileSaverDescriptor("Export Review Session", "Marks, notes and comments of ${store.session.scope.describe()}${store.session.generationLabel}", "json")
         val wrapper = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project).save(null as VirtualFile?, "nitpick-review.json") ?: return
         val branch = try {
             ScopeChanges.currentBranch(project)
@@ -542,7 +567,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             append("${changes.size} files · $reviewed reviewed")
             if (stale > 0) append(" · $stale stale")
             append(" · $open open comments")
-            append(" · ${session.scope.describe()}")
+            append(" · ${session.scope.describe()}${session.generationLabel}")
             val others = store.sessionCount - (if (session.isEmpty) 0 else 1)
             if (others > 0) append(" · $others other session${if (others > 1) "s" else ""} saved")
         }
@@ -716,7 +741,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
         override fun update(e: AnActionEvent) {
             val scope = store.session.scope
-            e.presentation.text = scope.shortLabel()
+            e.presentation.text = scope.shortLabel() + store.session.generationLabel
             e.presentation.description = "Reviewing ${scope.describe()}"
         }
 
@@ -764,10 +789,10 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             if (saved.size > 1) {
                 group.add(Separator.create("Saved Sessions"))
                 for (s in saved) {
-                    group.add(object : ToggleAction("${s.scope.describe()} · ${s.reviewed.size} reviewed"), DumbAware {
+                    group.add(object : ToggleAction(sessionLabel(s)), DumbAware {
                         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-                        override fun isSelected(e: AnActionEvent): Boolean = s.scope.key() == store.currentKey
-                        override fun setSelected(e: AnActionEvent, state: Boolean) { if (state) setScope(s.scope) }
+                        override fun isSelected(e: AnActionEvent): Boolean = s.key == store.currentKey
+                        override fun setSelected(e: AnActionEvent, state: Boolean) { if (state) setSession(s.key) }
                     })
                 }
                 group.add(object : AnAction("Delete Session…"), DumbAware {
@@ -782,16 +807,27 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val others = store.savedSessions().drop(1)
             JBPopupFactory.getInstance().createPopupChooserBuilder(others)
                 .setTitle("Delete Session")
-                .setRenderer(textListCellRenderer { "${it.scope.describe()} · ${it.reviewed.size} reviewed" })
+                .setRenderer(textListCellRenderer { sessionLabel(it) })
                 .setNamerForFiltering { it.scope.describe() }
-                .setItemChosenCallback { store.forgetSession(it.scope.key()) }
+                .setItemChosenCallback { store.forgetSession(it.key) }
                 .createPopup()
                 .showUnderneathOf(component)
+        }
+
+        private fun sessionLabel(s: ReviewSession): String {
+            val comments = store.comments.count { it.sessionKey == s.key }
+            return "${s.scope.describe()}${s.generationLabel} · ${s.reviewed.size} reviewed · $comments comments"
         }
 
         private fun setScope(scope: Scope) {
             flushNotes()
             store.setScope(scope)
+            model.refresh()
+        }
+
+        private fun setSession(key: String) {
+            flushNotes()
+            store.setCurrent(key)
             model.refresh()
         }
 

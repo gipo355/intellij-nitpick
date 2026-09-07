@@ -204,7 +204,8 @@ class ReviewChangesModel(private val project: Project) : Disposable {
         val marked = HashSet<String>()
         store.session.reviewed.keys.forEach { marked += it }
         store.otherSessions().forEach { marked += it.reviewed.keys }
-        store.comments.forEach { if (!it.isReviewLevel && !it.isFolderLevel) marked += it.path }
+        val live = store.liveKeys()
+        store.comments.forEach { if (!it.isReviewLevel && !it.isFolderLevel && CommentPlacer.visible(it, store.currentKey, live)) marked += it.path }
         if (marked.isEmpty()) return
         for (rc in list) {
             if (rc.path in marked || marked.any { ReviewPaths.matches(it, rc.path) }) rc.prime()
@@ -273,7 +274,7 @@ class ReviewChangesModel(private val project: Project) : Disposable {
         val cv = changesVersion
         val sv = store.version
         placed?.let { if (it.changesVersion == cv && it.storeVersion == sv) return it }
-        val all = CommentPlacer.place(store.comments, changes, store.currentKey)
+        val all = CommentPlacer.place(store.comments, changes, store.currentKey, store.liveKeys())
         val fresh = Placed(cv, sv, all, all.filter { !it.isReviewLevel }.groupBy { it.path })
         placed = fresh
         return fresh
@@ -283,7 +284,9 @@ class ReviewChangesModel(private val project: Project) : Disposable {
     fun commentsFor(path: String): List<Comment> {
         val rc = find(path)
         if (rc == null) {
-            return ReviewStore.getInstance(project).comments.filter { !it.isReviewLevel && ReviewPaths.matches(it.path, path) }
+            val store = ReviewStore.getInstance(project)
+            val live = store.liveKeys()
+            return store.comments.filter { !it.isReviewLevel && CommentPlacer.visible(it, store.currentKey, live) && ReviewPaths.matches(it.path, path) }
         }
         val p = placedNow()
         p.byPath[path]?.let { return it }
