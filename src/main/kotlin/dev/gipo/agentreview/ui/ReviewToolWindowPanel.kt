@@ -147,6 +147,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 "Nitpick" + (wrapper?.presentableName?.let { ": $it" } ?: "")
 
             override fun handleDoubleClick(e: MouseEvent): Boolean {
+                if (toggleFolder(e)) return true
                 if (model.isBranchMode) return openSelectedSource(focus = true)
                 syncPreviewToSelection(handler)
                 return super.handleDoubleClick(e)
@@ -314,6 +315,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         refreshUi()
         model.refresh()
+    }
+
+    /** ChangesTree hardcodes getToggleClickCount() to -1, so Swing never expands a folder on double click. */
+    private fun toggleFolder(e: MouseEvent): Boolean {
+        val tree = browser.viewer
+        val path = TreeUtil.getPathForLocation(tree, e.x, e.y) ?: return false
+        if (tree.model.isLeaf(path.lastPathComponent)) return false
+        if (tree.isExpanded(path)) tree.collapsePath(path) else tree.expandPath(path)
+        return true
     }
 
     /** Opens the selected tree file in its editor. Branch mode has no diff to show. */
