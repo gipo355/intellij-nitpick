@@ -74,14 +74,20 @@ class EditorReviewBinding(
         AddCommentGutterHover(editor, this) { line -> addCommentAt(line) }
     }
 
-    /** Opens the comment editor for a 0-based editor line (gutter "+" click). */
+    /** Opens the comment editor for a 0-based editor line (gutter "+" click). A click inside the selection comments the selection. */
     fun addCommentAt(editorLine: Int) {
-        val (side, line) = mapper.fromEditor(editorLine) ?: return
         val doc = editor.document
-        val snippet = if (editorLine < doc.lineCount) doc.getText(com.intellij.openapi.util.TextRange(doc.getLineStartOffset(editorLine), doc.getLineEndOffset(editorLine))) else ""
-        editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(editorLine, 0))
-        CommentEditorPopup.showAtCaret(project, editor, dev.gipo.agentreview.model.CommentType.NOTE, "") { text, type ->
-            store.addComment(Comment(path = path, side = side, startLine = line, endLine = line, type = type, text = text, snippet = snippet, contentHash = contentHash(side)))
+        val sel = editor.selectionModel
+        val inSelection = sel.hasSelection() && editorLine in doc.getLineNumber(sel.selectionStart)..doc.getLineNumber(sel.selectionEnd)
+        val (side, start, end) = if (inSelection) selectionRange() ?: return else mapper.fromEditor(editorLine)?.let { (s, l) -> Triple(s, l, l) } ?: return
+        val snippet = when {
+            inSelection -> selectedText()
+            editorLine < doc.lineCount -> doc.getText(com.intellij.openapi.util.TextRange(doc.getLineStartOffset(editorLine), doc.getLineEndOffset(editorLine)))
+            else -> ""
+        }
+        if (!inSelection) editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(editorLine, 0))
+        CommentEditorPopup.showAtCaret(project, editor, "$path:$side:$start-$end", dev.gipo.agentreview.model.CommentType.NOTE, "") { text, type ->
+            store.addComment(Comment(path = path, side = side, startLine = start, endLine = end, type = type, text = text, snippet = snippet, contentHash = contentHash(side)))
         }
     }
 

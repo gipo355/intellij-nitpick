@@ -73,12 +73,12 @@ class CommentInlayPanel(project: Project, private val comment: Comment, onChange
 
         val actions = JPanel(HorizontalLayout(14)).apply { isOpaque = false }
         actions.add(link("Edit") {
-            CommentEditorPopup.show(project, this, comment.type, comment.text) { text, type ->
+            CommentEditorPopup.show(project, this, comment.id, comment.type, comment.text) { text, type ->
                 store.updateComment(comment.id) { it.copy(text = text, type = type) }
             }
         })
         actions.add(link("Reply") {
-            CommentEditorPopup.showReply(project, this) { text ->
+            CommentEditorPopup.showReply(project, this, "reply:" + comment.id) { text ->
                 store.updateComment(comment.id) { it.copy(thread = it.thread + ThreadEntry(Author.USER, text)) }
             }
         })

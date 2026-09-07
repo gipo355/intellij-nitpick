@@ -5,6 +5,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.ui.popup.JBPopupListener
+import com.intellij.openapi.ui.popup.LightweightWindowEvent
 import com.intellij.ui.dsl.listCellRenderer.listCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.EditorTextField
@@ -43,30 +45,34 @@ internal fun vimReadyTextField(project: Project, text: String): EditorTextField 
 /**
  * Comment editor: type chooser, text, Cancel / Save. Ctrl+Enter saves, Esc cancels, Alt+1..5 pick the type.
  * A new comment starts with the last type used.
+ *
+ * <p>[draftKey] names what is being edited. Text of a popup closed without Save comes back on the next open.
  */
 object CommentEditorPopup {
 
-    fun show(project: Project, anchor: JComponent, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
-        build(project, type, text, onSave).showUnderneathOf(anchor)
+    fun show(project: Project, anchor: JComponent, draftKey: String, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
+        build(project, draftKey, type, text, onSave).showUnderneathOf(anchor)
     }
 
-    fun showAtCaret(project: Project, editor: Editor, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
-        build(project, type, text, onSave).showInBestPositionFor(editor)
+    fun showAtCaret(project: Project, editor: Editor, draftKey: String, type: CommentType, text: String, onSave: (String, CommentType) -> Unit) {
+        build(project, draftKey, type, text, onSave).showInBestPositionFor(editor)
     }
 
     /** Reply that keeps the comment open: no type chooser. */
-    fun showReply(project: Project, anchor: JComponent, onSave: (String) -> Unit) {
-        build(project, CommentType.NOTE, "", { text, _ -> onSave(text) }, reply = true).showUnderneathOf(anchor)
+    fun showReply(project: Project, anchor: JComponent, draftKey: String, onSave: (String) -> Unit) {
+        build(project, draftKey, CommentType.NOTE, "", { text, _ -> onSave(text) }, reply = true).showUnderneathOf(anchor)
     }
 
-    private fun build(project: Project, type: CommentType, text: String, onSave: (String, CommentType) -> Unit, reply: Boolean = false): JBPopup {
-        val area = vimReadyTextField(project, text).apply {
+    private fun build(project: Project, draftKey: String, type: CommentType, text: String, onSave: (String, CommentType) -> Unit, reply: Boolean = false): JBPopup {
+        val drafts = CommentDrafts.getInstance(project)
+        val draft = drafts.get(draftKey)
+        val area = vimReadyTextField(project, draft?.text ?: text).apply {
             setPlaceholder(if (reply) "Your reply…" else "What should the agent change here?")
             preferredSize = Dimension(JBUI.scale(520), JBUI.scale(130))
         }
         val settings = AgentReviewSettings.getInstance().state
         val typeBox = ComboBox(CommentType.entries.toTypedArray()).apply {
-            selectedItem = if (text.isEmpty()) settings.lastCommentType else type
+            selectedItem = draft?.type ?: if (text.isEmpty()) settings.lastCommentType else type
             renderer = listCellRenderer {
                 val color = CommentColors.of(value)
                 text(value.name.lowercase().replaceFirstChar { it.uppercase() }) { foreground = color }
@@ -108,6 +114,7 @@ object CommentEditorPopup {
             if (value.isNotEmpty()) {
                 val chosen = typeBox.selectedItem as CommentType
                 if (!reply) settings.lastCommentType = chosen
+                drafts.clear(draftKey)
                 onSave(value, chosen)
                 popup.closeOk(null)
             }
@@ -130,9 +137,16 @@ object CommentEditorPopup {
             .setMovable(true)
             .setResizable(true)
             .setCancelOnClickOutside(false)
+            .setCancelOnWindowDeactivation(false)
+            .setCancelOnOtherWindowOpen(false)
             .setCancelKeyEnabled(true)
             .setTitle(if (reply) "Reply" else if (text.isEmpty()) "New Review Comment" else "Edit Review Comment")
             .createPopup()
+        popup.addListener(object : JBPopupListener {
+            override fun onClosed(event: LightweightWindowEvent) {
+                if (!event.isOk) drafts.put(draftKey, area.text, typeBox.selectedItem as CommentType, original = text)
+            }
+        })
         return popup
     }
 }

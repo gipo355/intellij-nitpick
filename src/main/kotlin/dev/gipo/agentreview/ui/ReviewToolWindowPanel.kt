@@ -49,7 +49,9 @@ import com.intellij.openapi.fileChooser.FileChooserFactory
 import com.intellij.openapi.fileChooser.FileSaverDescriptor
 import com.intellij.openapi.vfs.VirtualFile
 import dev.gipo.agentreview.export.SessionFile
+import com.intellij.openapi.vcs.changes.issueLinks.TreeLinkMouseListener
 import com.intellij.ui.ColoredListCellRenderer
+import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.PopupHandler
 import dev.gipo.agentreview.diff.CommentEditorPopup
 import com.intellij.ui.OnePixelSplitter
@@ -137,16 +139,19 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 val comments = model.comments().filter { it.isFolderLevel && it.path == folder }
                 val open = comments.count { !it.resolved }
                 val resolved = comments.size - open
-                if (open > 0) append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+                if (open > 0) append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES, editBadge(comments))
                 if (resolved > 0) append("  $resolved resolved", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             }
         }
+        // Runs the badge's tag on click; the tree's own link handler only knows the renderer it was built with.
+        TreeLinkMouseListener(browser.viewer.cellRenderer as ColoredTreeCellRenderer).installOn(browser.viewer)
         val handler = GatedPreviewHandler()
         val preview = object : TreeHandlerEditorDiffPreview(browser.viewer, handler) {
             override fun getEditorTabName(wrapper: ChangeViewDiffRequestProcessor.Wrapper?): String =
                 "Nitpick" + (wrapper?.presentableName?.let { ": $it" } ?: "")
 
             override fun handleDoubleClick(e: MouseEvent): Boolean {
+                if (toggleFolder(e)) return true
                 if (model.isBranchMode) return openSelectedSource(focus = true)
                 syncPreviewToSelection(handler)
                 return super.handleDoubleClick(e)
@@ -316,6 +321,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         model.refresh()
     }
 
+    /** ChangesTree hardcodes getToggleClickCount() to -1, so Swing never expands a folder on double click. */
+    private fun toggleFolder(e: MouseEvent): Boolean {
+        val tree = browser.viewer
+        val path = TreeUtil.getPathForLocation(tree, e.x, e.y) ?: return false
+        if (tree.model.isLeaf(path.lastPathComponent)) return false
+        if (tree.isExpanded(path)) tree.collapsePath(path) else tree.expandPath(path)
+        return true
+    }
+
     /** Opens the selected tree file in its editor. Branch mode has no diff to show. */
     private fun openSelectedSource(focus: Boolean): Boolean {
         val change = browser.selectedChanges.firstOrNull() ?: return false
@@ -430,12 +444,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         return DefaultActionGroup(
             action("Open in Diff", AllIcons.Actions.Diff, { !it.isReviewLevel }) { open(it) },
             action("Edit…", AllIcons.Actions.Edit) { c ->
-                CommentEditorPopup.show(project, commentsList, c.type, c.text) { text, type ->
+                CommentEditorPopup.show(project, commentsList, c.id, c.type, c.text) { text, type ->
                     store.updateComment(c.id) { it.copy(text = text, type = type) }
                 }
             },
             action("Reply…", AllIcons.Actions.Forward) { c ->
-                CommentEditorPopup.showReply(project, commentsList) { text ->
+                CommentEditorPopup.showReply(project, commentsList, "reply:" + c.id) { text ->
                     store.updateComment(c.id) { it.copy(thread = it.thread + ThreadEntry(Author.USER, text)) }
                 }
             },
@@ -617,6 +631,22 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
     }
 
+    /** Click on a node's `N ✎` badge: one comment opens its editor, several pick first. */
+    private fun editBadge(comments: List<Comment>): Runnable = Runnable {
+        val edit = { c: Comment ->
+            CommentEditorPopup.show(project, browser.viewer, c.id, c.type, c.text) { text, type ->
+                store.updateComment(c.id) { it.copy(text = text, type = type) }
+            }
+        }
+        comments.singleOrNull()?.let { return@Runnable edit(it) }
+        JBPopupFactory.getInstance().createPopupChooserBuilder(comments)
+            .setTitle("Edit Comment")
+            .setRenderer(textListCellRenderer { "${it.location()}  ${it.text.lineSequence().first().take(60)}" })
+            .setItemChosenCallback(edit)
+            .createPopup()
+            .showUnderneathOf(browser.viewer)
+    }
+
     private inner class ReviewDecorator : ChangeNodeDecorator {
         override fun decorate(change: Change, component: SimpleColoredComponent, isShowFlatten: Boolean) {
             val path = ReviewPaths.relative(project, change)
@@ -625,7 +655,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             val fileComments = model.commentsFor(path)
             val open = fileComments.count { !it.resolved }
             val resolved = fileComments.size - open
-            if (open > 0) component.append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+            if (open > 0) component.append("  $open ✎", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES, editBadge(fileComments))
             if (resolved > 0) component.append("  $resolved resolved", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             when (state) {
                 ReviewState.REVIEWED -> component.append("  ✓", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, com.intellij.ui.JBColor(0x2E7D32, 0x81C784)))
