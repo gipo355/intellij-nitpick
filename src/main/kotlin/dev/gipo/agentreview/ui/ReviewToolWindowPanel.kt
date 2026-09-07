@@ -92,6 +92,8 @@ import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.MouseEvent
 import javax.swing.DefaultListModel
 import javax.swing.JComponent
@@ -287,6 +289,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             firstComponent = browser
             secondComponent = bottom
         }
+        // Docked at the bottom the panel is wide: tree, comments and notes go side by side. On a side, stacked.
+        addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent) {
+                val vertical = height > width
+                for (sp in listOf(splitter, bottom)) if (sp.orientation != vertical) sp.orientation = vertical
+            }
+        })
         status.border = JBUI.Borders.empty(2, 8)
         status.foreground = UIUtil.getContextHelpForeground()
 
