@@ -430,7 +430,6 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(ActionManager.getInstance().getAction("AgentReview.WriteFile"))
             add(ActionManager.getInstance().getAction("AgentReview.SendGroup"))
             add(Separator.getInstance())
-            add(newSessionAction)
             add(object : AnAction("Export Session…", "Save this session's marks, notes and comments to a JSON file", AllIcons.ToolbarDecorator.Export), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = exportSession()
             })
