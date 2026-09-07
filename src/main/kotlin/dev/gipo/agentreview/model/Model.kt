@@ -1,5 +1,6 @@
 package dev.gipo.agentreview.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
@@ -107,8 +108,9 @@ data class Comment(
     val thread: List<ThreadEntry> = emptyList(),
     /** Hash of the commented side's file content at creation. Null: never relocated. */
     val contentHash: String? = null,
-    /** Session key the comment was written in. Only review-level comments are filtered by it. */
-    val scopeKey: String = "",
+    /** Key of the owning session. Wire name kept so pre-0.5 data loads. */
+    @SerialName("scopeKey")
+    val sessionKey: String = "",
     /** Runtime only: the commented text is gone from the file in the current scope. */
     val outdated: Boolean = false,
 ) {
@@ -133,6 +135,8 @@ data class Comment(
 @Serializable
 data class ReviewSession(
     val scope: Scope = Scope(),
+    /** Nth review of the same scope. "New Session" bumps it; the older ones stay as superseded rounds. */
+    val generation: Int = 1,
     /** Pre-0.2.1. Moved to [ReviewStorage.comments] on load. */
     val comments: List<Comment> = emptyList(),
     /** path -> content hash at the time of marking. */
@@ -142,6 +146,12 @@ data class ReviewSession(
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
     val isEmpty: Boolean get() = reviewed.isEmpty() && notes.isBlank()
+
+    /** Scope key, `#n` appended past the first generation. */
+    val key: String get() = scope.key() + (if (generation > 1) "#$generation" else "")
+
+    /** ` #n` for display, empty for the first generation. */
+    val generationLabel: String get() = if (generation > 1) " #$generation" else ""
 
     fun reviewState(path: String, currentHash: String?): ReviewState {
         val stored = reviewed[path] ?: return ReviewState.UNREVIEWED
@@ -158,7 +168,10 @@ val commentOrder: Comparator<Comment> = compareBy<Comment> { it.path }
     .thenBy { it.endLine ?: 0 }
     .thenBy { it.createdAt }
 
-/** All sessions of a project, one per scope key. Comments are project-wide, anchored to file text. */
+/**
+ * All sessions of a project, keyed by [ReviewSession.key]. Comments belong to a session; the live ones (newest
+ * generation of each scope) share them across scopes, superseded ones keep theirs to themselves.
+ */
 @Serializable
 data class ReviewStorage(
     val sessions: Map<String, ReviewSession> = emptyMap(),

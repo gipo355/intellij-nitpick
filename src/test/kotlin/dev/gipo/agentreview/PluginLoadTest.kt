@@ -40,7 +40,7 @@ class PluginLoadTest : BasePlatformTestCase() {
         assertEquals(store.session.scope.key(), fresh.session.scope.key())
         assertEquals(1, fresh.comments.size)
         assertEquals("hello", fresh.comments[0].text)
-        assertEquals(fresh.currentKey, fresh.comments[0].scopeKey)
+        assertEquals(fresh.currentKey, fresh.comments[0].sessionKey)
         assertEquals(ReviewState.REVIEWED, fresh.session.reviewState("a.kt", "h1"))
         assertEquals(ReviewState.STALE, fresh.session.reviewState("a.kt", "h2"))
         store.clear()
@@ -90,7 +90,7 @@ class SessionPerScopeTest : com.intellij.testFramework.fixtures.BasePlatformTest
         // Comments are project-wide; clearing another scope keeps them.
         store.clear()
         assertEquals("cd", store.comments.single().text)
-        assertEquals("range:c..d", store.comments.single().scopeKey)
+        assertEquals("range:c..d", store.comments.single().sessionKey)
 
         // Legacy single-session state still loads; its comments move to the project list.
         val legacy = ReviewStore.State().also {
@@ -99,7 +99,7 @@ class SessionPerScopeTest : com.intellij.testFramework.fixtures.BasePlatformTest
         val fresh = ReviewStore(project)
         fresh.loadState(legacy)
         assertEquals("old", fresh.comments.single().text)
-        assertEquals("uncommitted", fresh.comments.single().scopeKey)
+        assertEquals("uncommitted", fresh.comments.single().sessionKey)
         assertTrue(fresh.session.comments.isEmpty())
         store.forgetOtherSessions()
         store.clearAll()
@@ -127,6 +127,49 @@ class SessionPerScopeTest : com.intellij.testFramework.fixtures.BasePlatformTest
         // Switching back restores the marks.
         store.setScope(ab)
         assertEquals(ReviewState.REVIEWED, store.session.reviewState("x.kt", "h1"))
+        store.forgetOtherSessions()
+        store.clearAll()
+    }
+
+    fun testNewSessionStartsEmptyAndKeepsTheOldOne() {
+        val store = ReviewStore.getInstance(project)
+        val ab = dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "a", head = "b")
+        val cd = dev.gipo.agentreview.model.Scope(dev.gipo.agentreview.model.ScopeKind.RANGE, base = "c", head = "d")
+        store.setScope(cd)
+        store.setReviewed("y.kt", "h2")
+        store.setScope(ab)
+        store.addComment(Comment(path = "x.kt", startLine = 1, text = "round 1"))
+        store.setReviewed("x.kt", "h1")
+
+        store.newSession()
+        assertEquals("range:a..b#2", store.currentKey)
+        assertTrue(store.session.reviewed.isEmpty())
+        assertTrue("range:a..b#2" in store.liveKeys())
+        assertFalse("range:a..b" in store.liveKeys())
+        // The comment stays with generation 1; the new one sees only the live cd session for carry-over.
+        assertEquals("range:a..b", store.comments.single().sessionKey)
+        assertEquals(listOf("range:c..d"), store.otherSessions().map { it.key })
+
+        // Picking the scope again lands on the newest generation; the old one opens by key.
+        store.setScope(cd)
+        store.setScope(ab)
+        assertEquals("range:a..b#2", store.currentKey)
+        store.setCurrent("range:a..b")
+        assertEquals(ReviewState.REVIEWED, store.session.reviewState("x.kt", "h1"))
+        // Superseded: inherits nothing.
+        assertTrue(store.otherSessions().isEmpty())
+
+        // A session with only comments survives a save; forgetting one drops its comments.
+        store.setCurrent("range:a..b#2")
+        store.addComment(Comment(path = "z.kt", startLine = 1, text = "round 2"))
+        val fresh = ReviewStore(project)
+        fresh.loadState(store.state)
+        assertEquals(listOf("range:a..b#2", "range:a..b", "range:c..d").sorted(), fresh.savedSessions().map { it.key }.sorted())
+        assertEquals(2, fresh.comments.size)
+        store.forgetSession("range:a..b")
+        assertEquals("round 2", store.comments.single().text)
+
+        store.setScope(dev.gipo.agentreview.model.Scope())
         store.forgetOtherSessions()
         store.clearAll()
     }

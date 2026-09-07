@@ -72,8 +72,14 @@ Install Plugin from Disk… with `build/distributions/nitpick-<version>.zip`.
 | Stash… | a stash vs the commit it was taken on |
 | Current Branch | no diff: the whole tree or one folder, annotated in the editor |
 
-Each scope keeps its own session of reviewed marks and notes. Comments belong
-to files, so every scope containing the file shows them.
+Each scope keeps its own session of reviewed marks, notes and comments. Comments
+are anchored to file text, so every scope containing the file shows them.
+
+Done with a round? **New Session** (toolbar, next to the scope) starts a fresh
+review of the same scope. The old round stays under Saved Sessions in the scope
+menu, comments included, and can be reopened at any time. Only the newest
+session of each scope shares its comments with other scopes; older ones keep
+theirs to themselves. Delete Session removes a round with its comments.
 
 ## Getting the review to the agent
 

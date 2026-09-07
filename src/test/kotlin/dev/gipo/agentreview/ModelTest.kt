@@ -22,6 +22,15 @@ import org.junit.Test
 class ModelTest {
 
     @Test
+    fun sessionKeyCarriesTheGeneration() {
+        val scope = Scope(ScopeKind.RANGE, base = "a", head = "b")
+        assertEquals("range:a..b", ReviewSession(scope = scope).key)
+        assertEquals("", ReviewSession(scope = scope).generationLabel)
+        assertEquals("range:a..b#2", ReviewSession(scope = scope, generation = 2).key)
+        assertEquals(" #2", ReviewSession(scope = scope, generation = 2).generationLabel)
+    }
+
+    @Test
     fun locations() {
         assertEquals("a.kt:1", Comment(path = "a.kt", startLine = 1).location())
         assertEquals("a.kt:1", Comment(path = "a.kt", startLine = 1, endLine = 1).location())
