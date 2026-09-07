@@ -80,7 +80,7 @@ class EditorReviewBinding(
         val doc = editor.document
         val snippet = if (editorLine < doc.lineCount) doc.getText(com.intellij.openapi.util.TextRange(doc.getLineStartOffset(editorLine), doc.getLineEndOffset(editorLine))) else ""
         editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(editorLine, 0))
-        CommentEditorPopup.showAtCaret(project, editor, dev.gipo.agentreview.model.CommentType.NOTE, "") { text, type ->
+        CommentEditorPopup.showAtCaret(project, editor, "$path:$side:$line-$line", dev.gipo.agentreview.model.CommentType.NOTE, "") { text, type ->
             store.addComment(Comment(path = path, side = side, startLine = line, endLine = line, type = type, text = text, snippet = snippet, contentHash = contentHash(side)))
         }
     }

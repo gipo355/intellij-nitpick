@@ -440,12 +440,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         return DefaultActionGroup(
             action("Open in Diff", AllIcons.Actions.Diff, { !it.isReviewLevel }) { open(it) },
             action("Edit…", AllIcons.Actions.Edit) { c ->
-                CommentEditorPopup.show(project, commentsList, c.type, c.text) { text, type ->
+                CommentEditorPopup.show(project, commentsList, c.id, c.type, c.text) { text, type ->
                     store.updateComment(c.id) { it.copy(text = text, type = type) }
                 }
             },
             action("Reply…", AllIcons.Actions.Forward) { c ->
-                CommentEditorPopup.showReply(project, commentsList) { text ->
+                CommentEditorPopup.showReply(project, commentsList, "reply:" + c.id) { text ->
                     store.updateComment(c.id) { it.copy(thread = it.thread + ThreadEntry(Author.USER, text)) }
                 }
             },

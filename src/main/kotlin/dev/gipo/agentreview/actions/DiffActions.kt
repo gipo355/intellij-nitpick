@@ -66,7 +66,7 @@ class EditFileCommentsGroup : ActionGroup("Edit Comment", true), DumbAware {
             object : AnAction("${c.location()}  ${c.text.lineSequence().first().take(60)}"), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) {
                     val anchor = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) as? JComponent ?: return
-                    CommentEditorPopup.show(project, anchor, c.type, c.text) { text, type ->
+                    CommentEditorPopup.show(project, anchor, c.id, c.type, c.text) { text, type ->
                         ReviewStore.getInstance(project).updateComment(c.id) { it.copy(text = text, type = type) }
                     }
                 }
@@ -88,7 +88,7 @@ class AddCommentAction : DiffReviewAction() {
         val binding = e.binding() ?: return
         val (side, start, end) = binding.selectionRange() ?: return
         val snippet = binding.selectedText()
-        CommentEditorPopup.showAtCaret(project, binding.editor, CommentType.NOTE, "") { text, type ->
+        CommentEditorPopup.showAtCaret(project, binding.editor, "${binding.path}:$side:$start-$end", CommentType.NOTE, "") { text, type ->
             ReviewStore.getInstance(project).addComment(
                 Comment(path = binding.path, side = side, startLine = start, endLine = end, type = type, text = text, snippet = snippet, contentHash = binding.contentHash(side)),
             )
@@ -108,9 +108,9 @@ class AddFileCommentAction : DiffReviewAction() {
         val onSave: (String, CommentType) -> Unit = { text, type ->
             ReviewStore.getInstance(project).addComment(Comment(path = path, side = Side.NEW, type = type, text = text))
         }
-        if (editor != null) CommentEditorPopup.showAtCaret(project, editor, CommentType.NOTE, "", onSave)
+        if (editor != null) CommentEditorPopup.showAtCaret(project, editor, path, CommentType.NOTE, "", onSave)
         else e.getData(com.intellij.openapi.actionSystem.PlatformDataKeys.CONTEXT_COMPONENT)?.let {
-            CommentEditorPopup.show(project, it as javax.swing.JComponent, CommentType.NOTE, "", onSave)
+            CommentEditorPopup.show(project, it as javax.swing.JComponent, path, CommentType.NOTE, "", onSave)
         }
     }
 }
@@ -143,7 +143,7 @@ class AddFolderCommentAction : DiffReviewAction() {
         val project = e.project ?: return
         val path = e.folderPath() ?: return
         val anchor = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) as? JComponent ?: return
-        CommentEditorPopup.show(project, anchor, CommentType.NOTE, "") { text, type ->
+        CommentEditorPopup.show(project, anchor, path, CommentType.NOTE, "") { text, type ->
             ReviewStore.getInstance(project).addComment(Comment(path = path, side = Side.NEW, type = type, text = text))
         }
     }
