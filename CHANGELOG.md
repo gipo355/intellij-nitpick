@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0](https://github.com/gipo355/intellij-nitpick/compare/v0.4.0...v0.5.0) (2026-09-07)
+
+
+### Features
+
+* click a node's comment badge to edit ([d95e772](https://github.com/gipo355/intellij-nitpick/commit/d95e77299052eaf36348a5dccfc76d1471cbc143))
+* comment detail card under the comments list ([9e0e64a](https://github.com/gipo355/intellij-nitpick/commit/9e0e64af07c2dd2451dd7f3b7f881107d28a43ca))
+* comment drafts, range gutter comments, badge edit, folder double-click ([dee45b3](https://github.com/gipo355/intellij-nitpick/commit/dee45b3e76ac62c433244c4cb3d1af19e61aa9b3))
+* gutter comment honors the selection ([7573d8d](https://github.com/gipo355/intellij-nitpick/commit/7573d8d912a29729aad03d33729babd2b51184d4))
+* keep comment drafts when the editor popup closes ([96fd0f7](https://github.com/gipo355/intellij-nitpick/commit/96fd0f72f016d304d72ced949e3b98a9abceb562))
+* new session per scope, old rounds kept ([3b76f22](https://github.com/gipo355/intellij-nitpick/commit/3b76f22ae598c01e091e4a464cd3c4e3dcf726ff))
+* side-by-side panes when the tool window is wider than tall ([0ee1b36](https://github.com/gipo355/intellij-nitpick/commit/0ee1b36d18f97176ce04dde5389145e7703de610))
+
+
+### Bug Fixes
+
+* expand folders on double click in the review tree ([318411d](https://github.com/gipo355/intellij-nitpick/commit/318411da7d52f6fbaa4af6cd97173f9766033448))
+* New Session was added to the toolbar group twice ([3fdfd69](https://github.com/gipo355/intellij-nitpick/commit/3fdfd698804616e8cd19e367fd9b56c2a520ef83))
+
 ## [0.4.0](https://github.com/gipo355/intellij-nitpick/compare/v0.3.1...v0.4.0) (2026-09-05)
 
 
