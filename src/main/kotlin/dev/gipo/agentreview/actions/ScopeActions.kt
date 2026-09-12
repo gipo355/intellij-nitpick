@@ -10,6 +10,8 @@ import com.intellij.vcs.log.VcsLogDataKeys
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.scope.ReviewChangesModel
+import dev.gipo.agentreview.scope.ReviewPaths
+import dev.gipo.agentreview.scope.ScopeChanges
 import dev.gipo.agentreview.store.ReviewStore
 
 internal fun startReview(project: Project, scope: Scope) {
@@ -39,10 +41,12 @@ class ReviewCommitAction : AnAction(), DumbAware {
         // same semantics as the log's "Compare Versions".
         val newest = commits.first().hash.asString()
         val oldest = commits.last().hash.asString()
+        // Multi-repo project: the log row knows its root, so the scope names it.
+        val repo = if (ScopeChanges.repoIds(project).size > 1) ReviewPaths.repoId(project.basePath, commits.first().root.path) else null
         val scope = if (commits.size == 1) {
-            Scope(ScopeKind.COMMIT, head = newest)
+            Scope(ScopeKind.COMMIT, head = newest, repo = repo)
         } else {
-            Scope(ScopeKind.RANGE, base = oldest, head = newest)
+            Scope(ScopeKind.RANGE, base = oldest, head = newest, repo = repo)
         }
         startReview(project, scope)
     }

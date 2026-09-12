@@ -23,6 +23,7 @@ import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
 import git4idea.history.GitHistoryUtils
+import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 
 /** Resolves a [Scope] to the list of changes to review. Runs git, call off the EDT. */
@@ -30,7 +31,9 @@ object ScopeChanges {
     private const val INDEX_REV = ":0"
 
     fun collect(project: Project, scope: Scope): List<Change> {
-        val repos = GitRepositoryManager.getInstance(project).repositories
+        val all = GitRepositoryManager.getInstance(project).repositories
+        // A named repo that is gone (imported session, folder moved) yields nothing rather than another repo's diff.
+        val repos = if (scope.repo == null) all else listOfNotNull(repository(project, scope.repo))
         return when (scope.kind) {
             ScopeKind.UNCOMMITTED -> uncommitted(project)
             ScopeKind.STAGED -> repos.flatMap { repo ->
@@ -47,9 +50,22 @@ object ScopeChanges {
                 val hash = scope.head ?: return emptyList()
                 repos.flatMap { repo -> GitChangeUtils.getDiff(repo, "$hash~1", hash, true).orEmpty() }
             }
-            ScopeKind.BRANCH -> branchTree(project, scope.root)
+            ScopeKind.BRANCH -> branchTree(project, scope.root ?: scope.repo)
         }.sortedBy { ChangesUtil.getFilePath(it).path }
     }
+
+    /** [id] null: the first repository, as in a single-repo project. Else the one with that [ReviewPaths.repoId], or null. */
+    fun repository(project: Project, id: String?): GitRepository? {
+        val repos = GitRepositoryManager.getInstance(project).repositories
+        if (id == null) return repos.firstOrNull()
+        return repos.firstOrNull { repoId(project, it) == id }
+    }
+
+    fun repoId(project: Project, repo: GitRepository): String = ReviewPaths.repoId(project.basePath, repo.root.path)
+
+    /** Repo ids, sorted. Empty or one: the project is single-repo and scopes carry no repo. */
+    fun repoIds(project: Project): List<String> =
+        GitRepositoryManager.getInstance(project).repositories.map { repoId(project, it) }.sorted()
 
     /**
      * Every text file the project file index knows under [root] (project-relative, or null for all content),
@@ -75,21 +91,21 @@ object ScopeChanges {
         return files.map { Change(null, CurrentContentRevision(VcsUtil.getFilePath(it))) }
     }
 
-    /** [relative] (trailing `/` optional) under the project base, else under the first VCS root. */
-    fun rootDir(project: Project, relative: String): VirtualFile? {
-        val rel = relative.trim('/')
-        val bases = listOfNotNull(project.basePath) +
-            GitRepositoryManager.getInstance(project).repositories.map { it.root.path }
-        for (base in bases) {
-            val vf = LocalFileSystem.getInstance().findFileByPath(if (rel.isEmpty()) base else "$base/$rel")
-            if (vf != null && vf.isDirectory) return vf
+    /** [relative] (trailing `/` optional) as a directory, see [ReviewPaths.candidates]. */
+    fun rootDir(project: Project, relative: String): VirtualFile? = find(project, relative.trim('/'))?.takeIf { it.isDirectory }
+
+    /** First existing file among [ReviewPaths.candidates]. */
+    fun find(project: Project, relative: String): VirtualFile? {
+        val roots = GitRepositoryManager.getInstance(project).repositories.map { it.root.path }
+        for (path in ReviewPaths.candidates(project.basePath, roots, relative)) {
+            LocalFileSystem.getInstance().findFileByPath(path)?.let { return it }
         }
         return null
     }
 
-    /** `git stash list` of the first repository as (ref, message), newest first. */
-    fun stashes(project: Project): List<Pair<String, String>> {
-        val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return emptyList()
+    /** `git stash list` of [repoId] as (ref, message), newest first. */
+    fun stashes(project: Project, repoId: String?): List<Pair<String, String>> {
+        val repo = repository(project, repoId) ?: return emptyList()
         val handler = GitLineHandler(project, repo.root, GitCommand.STASH)
         handler.addParameters("list", "--format=%gd%x1f%s")
         handler.setSilent(true)
@@ -124,21 +140,19 @@ object ScopeChanges {
     }
 
     /** Full hash of HEAD, or null outside git. */
-    fun headHash(project: Project): String? =
-        GitRepositoryManager.getInstance(project).repositories.firstOrNull()?.currentRevision
+    fun headHash(project: Project, repoId: String?): String? = repository(project, repoId)?.currentRevision
 
-    /** Checked-out branch of the first repository; null on a detached HEAD or outside git. */
-    fun currentBranchName(project: Project): String? =
-        GitRepositoryManager.getInstance(project).repositories.firstOrNull()?.currentBranchName
+    /** Checked-out branch; null on a detached HEAD or outside git. */
+    fun currentBranchName(project: Project, repoId: String?): String? = repository(project, repoId)?.currentBranchName
 
-    fun currentBranch(project: Project): String? {
-        val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return null
+    fun currentBranch(project: Project, repoId: String?): String? {
+        val repo = repository(project, repoId) ?: return null
         return repo.currentBranchName ?: repo.currentRevision?.take(8)
     }
 
     /** Local branches first, then remote. Current branch excluded. */
-    fun branchNames(project: Project): List<String> {
-        val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return emptyList()
+    fun branchNames(project: Project, repoId: String?): List<String> {
+        val repo = repository(project, repoId) ?: return emptyList()
         val current = repo.currentBranchName
         val local = repo.branches.localBranches.map { it.name }.filter { it != current }.sorted()
         val remote = repo.branches.remoteBranches.map { it.name }.sorted()
@@ -146,8 +160,8 @@ object ScopeChanges {
     }
 
     /** `git merge-base ref HEAD`, or null when git cannot resolve it. */
-    fun mergeBase(project: Project, ref: String): String? {
-        val repo = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return null
+    fun mergeBase(project: Project, repoId: String?, ref: String): String? {
+        val repo = repository(project, repoId) ?: return null
         return try {
             GitHistoryUtils.getMergeBase(project, repo.root, ref, "HEAD")?.rev
         } catch (e: Exception) {
@@ -166,7 +180,10 @@ object ScopeChanges {
 object ReviewPaths {
     fun relative(project: Project, path: FilePath): String = relative(project, path.path)
 
-    /** Relative to the project root, else to the VCS root, else absolute. Always `/` separated. */
+    /**
+     * Under the project base: relative to it. Else relative to its VCS root, prefixed with the `repoId` when the
+     * project has several repos. Else absolute. Always `/` separated.
+     */
     fun relative(project: Project, absolute: String): String {
         val abs = absolute.replace('\\', '/')
         relativeTo(project.basePath, abs)?.let { return it }
@@ -175,8 +192,37 @@ object ReviewPaths {
         } catch (e: Exception) {
             null
         }
-        relativeTo(root, abs)?.let { return it }
+        // Single repo: paths stay as before this field existed, so old marks keep their keys.
+        if (root != null && GitRepositoryManager.getInstance(project).repositories.size <= 1) relativeTo(root, abs)?.let { return it }
+        return relative(project.basePath, root, abs)
+    }
+
+    fun relative(base: String?, root: String?, abs: String): String {
+        relativeTo(base, abs)?.let { return it }
+        if (root != null) relativeTo(root, abs)?.let { return repoId(base, root) + "/" + it }
         return abs
+    }
+
+    /**
+     * Stable name of a git root: its path under the project base, else its folder name. The prefix of every path
+     * in that repo when the repo lies outside the base, and the value of [Scope.repo].
+     */
+    fun repoId(base: String?, root: String): String {
+        val r = root.replace('\\', '/').trimEnd('/')
+        return relativeTo(base, r) ?: r.substringAfterLast('/')
+    }
+
+    /** Where a relative path may live: under the base, under the repo it names, then under every repo (pre-repoId paths). */
+    fun candidates(base: String?, roots: List<String>, rel: String): List<String> {
+        val out = ArrayList<String>()
+        if (!base.isNullOrEmpty()) out += "$base/$rel"
+        for (root in roots) {
+            val id = repoId(base, root)
+            if (rel == id) out += root
+            else if (rel.startsWith("$id/")) out += "$root/" + rel.removePrefix("$id/")
+        }
+        for (root in roots) out += "$root/$rel"
+        return out
     }
 
     private fun relativeTo(base: String?, abs: String): String? {

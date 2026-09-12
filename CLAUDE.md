@@ -84,7 +84,14 @@ diffs inline, mark files reviewed, hand the review to any agent.
   sessions by hash at refresh.
 - Reviewed marks are `path -> content hash` of the NEW side. Empty string means
   "reviewed, hash unknown" and never goes stale.
-- Paths are project-relative; `ReviewPaths.matches` tolerates differing roots.
+- Paths are project-relative. A file outside the project base (multi-repo
+  workspace) is `<repoId>/<path in repo>`, `repoId` = root under the base,
+  else its folder name. `ReviewPaths.candidates` resolves them back.
+  `ReviewPaths.matches` tolerates differing roots.
+- `Scope.repo` (a `repoId`) names the git root of RANGE, COMMIT and BRANCH in a
+  multi-repo project, suffixed to the key as `|repo`. Null in single-repo
+  projects; working-tree scopes span every repo. Git lookups go through
+  `ScopeChanges.repository(project, id)`; a missing repo yields nothing.
 - `ScopeKind.BRANCH` has no diff: `ScopeChanges.branchTree` lists project
   files from `ProjectFileIndex` as `Change(null, CurrentContentRevision)`.
   Session key `branch:<name>[@folder/]`, `base` = HEAD when the plan started.

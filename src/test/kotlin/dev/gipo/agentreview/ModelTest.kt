@@ -64,6 +64,22 @@ class ModelTest {
     }
 
     @Test
+    fun repoScopesKeyPerRepo() {
+        assertEquals("range:a..b|core", Scope(ScopeKind.RANGE, base = "a", head = "b", repo = "core").key())
+        assertEquals("commit:abc|core", Scope(ScopeKind.COMMIT, head = "abc", repo = "core").key())
+        assertEquals("branch:main@src/|core", Scope(ScopeKind.BRANCH, head = "main", root = "src/", repo = "core").key())
+        // Working-tree scopes span every repo: the repo does not enter the key.
+        assertEquals("uncommitted", Scope(ScopeKind.UNCOMMITTED, repo = "core").key())
+    }
+
+    @Test
+    fun repoScopesSayTheirRepo() {
+        assertEquals("main..HEAD [core]", Scope(ScopeKind.RANGE, base = "main", head = "HEAD", repo = "core").shortLabel())
+        assertEquals("Branch main [core]", Scope(ScopeKind.BRANCH, head = "main", repo = "core").shortLabel())
+        assertTrue(Scope(ScopeKind.COMMIT, head = "abcdef12", repo = "core").describe().endsWith(" in core"))
+    }
+
+    @Test
     fun contentHashFoldsLineEndingsAndMatchesSha1Prefix() {
         val h = ContentHash.of("a\nb\n")
         assertEquals(h, ContentHash.of("a\r\nb\r\n"))
