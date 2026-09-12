@@ -3,9 +3,12 @@ package dev.gipo.agentreview.actions
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.vcs.log.VcsLogDataKeys
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
@@ -13,6 +16,10 @@ import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ScopeChanges
 import dev.gipo.agentreview.store.ReviewStore
+import git4idea.GitBranch
+import git4idea.actions.branch.GitSingleBranchAction
+import git4idea.history.GitHistoryUtils
+import git4idea.repo.GitRepository
 
 internal fun startReview(project: Project, scope: Scope) {
     dev.gipo.agentreview.diff.BranchEditorBinder.getInstance(project)
@@ -60,5 +67,24 @@ class ReviewUncommittedAction : AnAction(), DumbAware {
 
     override fun actionPerformed(e: AnActionEvent) {
         startReview(e.project ?: return, Scope(ScopeKind.UNCOMMITTED))
+    }
+}
+
+/** Branch popups (Git menu, Branches tool window, log labels): review HEAD since it diverged from the branch. */
+class ReviewBranchAction : GitSingleBranchAction() {
+    override fun actionPerformed(e: AnActionEvent, project: Project, repositories: List<GitRepository>, reference: GitBranch) {
+        val repo = repositories.firstOrNull() ?: return
+        val repoId = if (ScopeChanges.repoIds(project).size > 1) ScopeChanges.repoId(project, repo) else null
+        val ref = reference.name
+        AppExecutorUtil.getAppExecutorService().execute {
+            val mb = try {
+                GitHistoryUtils.getMergeBase(project, repo.root, ref, "HEAD")?.rev
+            } catch (ex: Exception) {
+                null
+            }
+            val scope = if (mb == null) Scope(ScopeKind.RANGE, base = ref, head = "HEAD", repo = repoId)
+            else Scope(ScopeKind.RANGE, base = mb, head = "HEAD", baseLabel = "merge-base($ref)", repo = repoId)
+            ApplicationManager.getApplication().invokeLater({ startReview(project, scope) }, ModalityState.nonModal(), project.disposed)
+        }
     }
 }
