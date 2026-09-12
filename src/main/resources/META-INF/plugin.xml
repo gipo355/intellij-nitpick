@@ -111,7 +111,10 @@
             <add-to-group group-id="Diff.ViewerToolbar" anchor="last"/>
         </group>
 
+        <action id="AgentReview.GoToSource" class="dev.gipo.agentreview.actions.GoToSourceAction"
+                text="Go to Source" description="Open the file in its editor" icon="AllIcons.Actions.EditSource"/>
         <group id="AgentReview.TreePopup">
+            <reference ref="AgentReview.GoToSource"/>
             <reference ref="AgentReview.ToggleReviewed"/>
             <reference ref="AgentReview.AddFileComment"/>
             <reference ref="AgentReview.AddFolderComment"/>
