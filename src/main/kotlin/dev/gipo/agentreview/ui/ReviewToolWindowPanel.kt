@@ -10,6 +10,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ToggleAction
+import com.intellij.openapi.actionSystem.Toggleable
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ApplicationManager
@@ -733,7 +734,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
     }
 
-    /** Radio items under one icon: eye when [entries] first (all) is active, funnel otherwise. */
+    /** Radio items under one funnel icon, drawn pressed while anything but [entries] first (all) is active. */
     private class RadioFilterGroup<T>(
         title: String,
         private val entries: List<T>,
@@ -742,7 +743,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         private val set: (T) -> Unit,
     ) : DefaultActionGroup(title, true), DumbAware {
         init {
-            templatePresentation.icon = AllIcons.Actions.ToggleVisibility
+            templatePresentation.icon = AllIcons.General.Filter
             for (f in entries) {
                 add(object : ToggleAction(label(f)), DumbAware {
                     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -757,7 +758,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         override fun update(e: AnActionEvent) {
             val f = get()
             e.presentation.description = "Filter: ${label(f)}"
-            e.presentation.icon = if (f == entries.first()) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
+            Toggleable.setSelected(e.presentation, f != entries.first())
         }
     }
 
