@@ -70,20 +70,25 @@ class ReviewUncommittedAction : AnAction(), DumbAware {
     }
 }
 
-/** Branch popups (Git menu, Branches tool window, log labels): review HEAD since it diverged from the branch. */
+/** Branch popups (Git menu, Branches tool window, log labels): review what the branch adds over HEAD, from their merge-base. */
 class ReviewBranchAction : GitSingleBranchAction() {
+    override fun updateIfEnabledAndVisible(e: AnActionEvent, project: Project, repositories: List<GitRepository>, reference: GitBranch) {
+        e.presentation.text = "Review Branch '${reference.name}' with Nitpick"
+    }
+
     override fun actionPerformed(e: AnActionEvent, project: Project, repositories: List<GitRepository>, reference: GitBranch) {
         val repo = repositories.firstOrNull() ?: return
         val repoId = if (ScopeChanges.repoIds(project).size > 1) ScopeChanges.repoId(project, repo) else null
         val ref = reference.name
+        val current = repo.currentBranchName ?: "HEAD"
         AppExecutorUtil.getAppExecutorService().execute {
             val mb = try {
-                GitHistoryUtils.getMergeBase(project, repo.root, ref, "HEAD")?.rev
+                GitHistoryUtils.getMergeBase(project, repo.root, "HEAD", ref)?.rev
             } catch (ex: Exception) {
                 null
             }
-            val scope = if (mb == null) Scope(ScopeKind.RANGE, base = ref, head = "HEAD", repo = repoId)
-            else Scope(ScopeKind.RANGE, base = mb, head = "HEAD", baseLabel = "merge-base($ref)", repo = repoId)
+            val scope = if (mb == null) Scope(ScopeKind.RANGE, base = "HEAD", head = ref, repo = repoId)
+            else Scope(ScopeKind.RANGE, base = mb, head = ref, baseLabel = "merge-base($current)", repo = repoId)
             ApplicationManager.getApplication().invokeLater({ startReview(project, scope) }, ModalityState.nonModal(), project.disposed)
         }
     }
