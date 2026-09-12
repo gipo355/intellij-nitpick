@@ -25,6 +25,8 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.openapi.wm.ToolWindowAnchor
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.diff.impl.DiffEditorViewer
@@ -290,10 +292,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             firstComponent = browser
             secondComponent = bottom
         }
-        // Docked at the bottom the panel is wide: tree, comments and notes go side by side. On a side, stacked.
+        // Docked at the bottom and wide: tree, comments and notes go side by side. Anywhere else stays stacked,
+        // so a wide side dock only buys room for long file names.
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
-                val vertical = height > width
+                val docked = ToolWindowManager.getInstance(project).getToolWindow("Nitpick")?.anchor == ToolWindowAnchor.BOTTOM
+                val vertical = !docked || height > width
                 for (sp in listOf(splitter, bottom)) if (sp.orientation != vertical) sp.orientation = vertical
             }
         })
