@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.0](https://github.com/gipo355/intellij-nitpick/compare/v0.5.0...v0.6.0) (2026-09-13)
+
+
+### Features
+
+* Go to Source in the file tree popup ([c548436](https://github.com/gipo355/intellij-nitpick/commit/c548436948bca1d40d0fbe0521072ce620af0d9b))
+* multi-repo workspaces ([35c1f9a](https://github.com/gipo355/intellij-nitpick/commit/35c1f9a7d10ac40e07c0cb2c07944e9f4faa813c))
+* multi-repo workspaces, branch review, tree and layout QOL ([220424c](https://github.com/gipo355/intellij-nitpick/commit/220424c8fe0ba99e60224ccb32c22eac2f5b4548))
+* Review Changes Since Branch in git branch menus ([585e194](https://github.com/gipo355/intellij-nitpick/commit/585e194e0ef7e3da231e8734fa29c50593123493))
+
+
+### Bug Fixes
+
+* branch menu reviews the clicked branch, not HEAD since it ([cfcec78](https://github.com/gipo355/intellij-nitpick/commit/cfcec78c7f870bdc32193023ba74cfe80a295581))
+* keep the funnel icon on file filters, show active state as pressed ([9ccf244](https://github.com/gipo355/intellij-nitpick/commit/9ccf24432df8f07bf7e78aa1a6210b98d63f00c8))
+* side-by-side layout only when docked at the bottom ([42f086e](https://github.com/gipo355/intellij-nitpick/commit/42f086e5cda92e4597e74ec114c096188bb8f7c7))
+
 ## [0.5.0](https://github.com/gipo355/intellij-nitpick/compare/v0.4.0...v0.5.0) (2026-09-07)
 
 
