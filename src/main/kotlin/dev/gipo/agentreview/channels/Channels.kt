@@ -26,7 +26,7 @@ object ReviewExport {
     fun markdown(project: Project, groupByFile: Boolean = false): String {
         val session = ReviewStore.getInstance(project).session
         val branch = try {
-            ScopeChanges.currentBranch(project)
+            ScopeChanges.currentBranch(project, session.scope.repo)
         } catch (e: Exception) {
             null
         }
@@ -37,7 +37,7 @@ object ReviewExport {
     fun json(project: Project): String {
         val session = ReviewStore.getInstance(project).session
         val branch = try {
-            ScopeChanges.currentBranch(project)
+            ScopeChanges.currentBranch(project, session.scope.repo)
         } catch (e: Exception) {
             null
         }

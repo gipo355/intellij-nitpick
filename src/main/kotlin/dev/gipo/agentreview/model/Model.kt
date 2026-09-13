@@ -29,14 +29,21 @@ data class Scope(
     val baseLabel: String? = null,
     /** BRANCH only: project-relative folder (trailing `/`) that limits the tree. Null is the whole project. */
     val root: String? = null,
+    /**
+     * RANGE, COMMIT, BRANCH in a multi-repo project: id of the git root the refs live in (see `ReviewPaths.repoId`).
+     * Null in single-repo projects, and always for working-tree scopes, which span every repo.
+     */
+    val repo: String? = null,
 ) {
     /** Session key. Working-tree scopes share one session per kind; ranges, commits and branches get their own. */
     fun key(): String = when (kind) {
-        ScopeKind.RANGE -> "range:${base}..${head ?: "HEAD"}"
-        ScopeKind.COMMIT -> "commit:$head"
-        ScopeKind.BRANCH -> "branch:${head ?: "HEAD"}" + (root?.let { "@$it" } ?: "")
+        ScopeKind.RANGE -> "range:${base}..${head ?: "HEAD"}" + repoSuffix("|")
+        ScopeKind.COMMIT -> "commit:$head" + repoSuffix("|")
+        ScopeKind.BRANCH -> "branch:${head ?: "HEAD"}" + (root?.let { "@$it" } ?: "") + repoSuffix("|")
         else -> kind.name.lowercase()
     }
+
+    private fun repoSuffix(sep: String): String = repo?.let { "$sep$it" } ?: ""
 
     /** Toolbar text: the concrete range or commit, not the kind. */
     fun shortLabel(): String = when (kind) {
@@ -49,7 +56,7 @@ data class Scope(
         }
         ScopeKind.COMMIT -> "commit ${short(head)}"
         ScopeKind.BRANCH -> root?.let { "$it on ${head ?: "HEAD"}" } ?: "Branch ${head ?: "HEAD"}"
-    }
+    } + (if (kind.followsChangeList) "" else repo?.let { " [$it]" } ?: "")
 
     /** Hashes to 8 chars, refs untouched. */
     private fun short(ref: String?): String = ref?.let { if (it.length >= 8 && it.all { c -> c.isDigit() || c in 'a'..'f' }) it.take(8) else it } ?: "?"
@@ -61,7 +68,7 @@ data class Scope(
         ScopeKind.RANGE -> "commits ${baseLabel ?: base?.take(8)}..${head?.take(8) ?: "HEAD"}"
         ScopeKind.COMMIT -> "commit ${head?.take(8)}"
         ScopeKind.BRANCH -> (root?.let { "$it on " } ?: "") + "branch ${head ?: "HEAD"} (whole tree, no diff)"
-    }
+    } + (if (kind.followsChangeList) "" else repo?.let { " in $it" } ?: "")
 }
 
 enum class Side { OLD, NEW }

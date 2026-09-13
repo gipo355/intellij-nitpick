@@ -10,6 +10,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ToggleAction
+import com.intellij.openapi.actionSystem.Toggleable
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ApplicationManager
@@ -24,6 +25,8 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.openapi.wm.ToolWindowAnchor
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.diff.impl.DiffEditorViewer
@@ -289,10 +292,12 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             firstComponent = browser
             secondComponent = bottom
         }
-        // Docked at the bottom the panel is wide: tree, comments and notes go side by side. On a side, stacked.
+        // Docked at the bottom and wide: tree, comments and notes go side by side. Anywhere else stays stacked,
+        // so a wide side dock only buys room for long file names.
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
-                val vertical = height > width
+                val docked = ToolWindowManager.getInstance(project).getToolWindow("Nitpick")?.anchor == ToolWindowAnchor.BOTTOM
+                val vertical = !docked || height > width
                 for (sp in listOf(splitter, bottom)) if (sp.orientation != vertical) sp.orientation = vertical
             }
         })
@@ -327,17 +332,17 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                 if (store.session.scope.kind.followsChangeList) scheduleRefresh()
             }
         })
-        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { _ ->
+        bus.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { repo ->
             val scope = store.session.scope
             if (scope.kind != ScopeKind.BRANCH) {
                 scheduleRefresh()
-            } else {
+            } else if (ScopeChanges.repository(project, scope.repo) == repo) {
                 // The tree comes from the VFS, so a commit or fetch changes nothing. A checkout of a named
-                // branch (first repository, whichever repo fired) switches to that branch's session.
+                // branch in the session's repo switches to that branch's session.
                 // A detached HEAD is not followed: every commit there would open a new session.
-                val branch = ScopeChanges.currentBranchName(project)
+                val branch = repo.currentBranchName
                 if (branch != null && branch != scope.head) {
-                    ApplicationManager.getApplication().invokeLater({ setBranchScope(scope.root) }, ModalityState.nonModal(), project.disposed)
+                    ApplicationManager.getApplication().invokeLater({ setBranchScope(scope.root, scope.repo) }, ModalityState.nonModal(), project.disposed)
                 }
             }
         })
@@ -372,9 +377,9 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
      * Branch mode on whatever is checked out, whole project or [root]. The HEAD hash at the time the plan
      * starts is kept in `base` (an existing session keeps its own), so the agent can diff since then.
      */
-    private fun setBranchScope(root: String?) {
-        runInBackground({ ScopeChanges.currentBranch(project) to ScopeChanges.headHash(project) }) { (branch, hash) ->
-            val fresh = Scope(ScopeKind.BRANCH, base = hash, head = branch ?: "HEAD", root = root)
+    private fun setBranchScope(root: String?, repo: String?) {
+        runInBackground({ ScopeChanges.currentBranch(project, repo) to ScopeChanges.headHash(project, repo) }) { (branch, hash) ->
+            val fresh = Scope(ScopeKind.BRANCH, base = hash, head = branch ?: "HEAD", root = root, repo = repo)
             val existing = store.liveSession(fresh.key())?.scope
             flushNotes()
             store.setScope(if (existing?.base != null) fresh.copy(base = existing.base) else fresh)
@@ -398,7 +403,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             model.refresh()
             return
         }
-        runInBackground({ ScopeChanges.headHash(project) }) { hash ->
+        runInBackground({ ScopeChanges.headHash(project, scope.repo) }) { hash ->
             store.newSession(scope.copy(base = hash))
             model.refresh()
         }
@@ -519,7 +524,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         val descriptor = FileSaverDescriptor("Export Review Session", "Marks, notes and comments of ${store.session.scope.describe()}${store.session.generationLabel}", "json")
         val wrapper = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project).save(null as VirtualFile?, "nitpick-review.json") ?: return
         val branch = try {
-            ScopeChanges.currentBranch(project)
+            ScopeChanges.currentBranch(project, store.session.scope.repo)
         } catch (e: Exception) {
             null
         }
@@ -733,7 +738,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         }
     }
 
-    /** Radio items under one icon: eye when [entries] first (all) is active, funnel otherwise. */
+    /** Radio items under one funnel icon, drawn pressed while anything but [entries] first (all) is active. */
     private class RadioFilterGroup<T>(
         title: String,
         private val entries: List<T>,
@@ -742,7 +747,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         private val set: (T) -> Unit,
     ) : DefaultActionGroup(title, true), DumbAware {
         init {
-            templatePresentation.icon = AllIcons.Actions.ToggleVisibility
+            templatePresentation.icon = AllIcons.General.Filter
             for (f in entries) {
                 add(object : ToggleAction(label(f)), DumbAware {
                     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -757,7 +762,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         override fun update(e: AnActionEvent) {
             val f = get()
             e.presentation.description = "Filter: ${label(f)}"
-            e.presentation.icon = if (f == entries.first()) AllIcons.Actions.ToggleVisibility else AllIcons.General.Filter
+            Toggleable.setSelected(e.presentation, f != entries.first())
         }
     }
 
@@ -779,36 +784,36 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             }
             group.add(Separator.getInstance())
             group.add(object : AnAction("Compare with Branch…", "Review everything on HEAD since it diverged from a branch (merge-base)", null), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = chooseBranch(e)
+                override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { chooseBranch(e, it) }
             })
             group.add(object : AnAction("Commit Range…", "Enter base..head, e.g. main..HEAD or abc123..def456", null), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) {
+                override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { repo ->
                     val current = store.session.scope.let { if (it.kind == ScopeKind.RANGE) "${it.baseLabel ?: it.base}..${it.head ?: "HEAD"}" else "main..HEAD" }
                     val input = Messages.showInputDialog(project, "Range as base..head (three dots = since merge-base):", "Review Commit Range", null, current, null)
-                        ?.trim()?.takeIf { it.isNotEmpty() } ?: return
+                        ?.trim()?.takeIf { it.isNotEmpty() } ?: return@pickRepo
                     val threeDot = input.contains("...")
                     val parts = input.split("...", "..").map { it.trim() }
-                    val base = parts.getOrNull(0)?.takeIf { it.isNotEmpty() } ?: return
+                    val base = parts.getOrNull(0)?.takeIf { it.isNotEmpty() } ?: return@pickRepo
                     val head = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: "HEAD"
-                    if (threeDot) setMergeBaseScope(base, head) else setScope(Scope(ScopeKind.RANGE, base = base, head = head))
+                    if (threeDot) setMergeBaseScope(base, head, repo) else setScope(Scope(ScopeKind.RANGE, base = base, head = head, repo = repo))
                 }
             })
             group.add(object : AnAction("Single Commit…"), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) {
+                override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { repo ->
                     val hash = Messages.showInputDialog(project, "Commit hash or ref:", "Review Commit", null, store.session.scope.head ?: "HEAD", null)
-                        ?: return
-                    setScope(Scope(ScopeKind.COMMIT, head = hash.trim()))
+                        ?: return@pickRepo
+                    setScope(Scope(ScopeKind.COMMIT, head = hash.trim(), repo = repo))
                 }
             })
             group.add(object : AnAction("Stash…", "Review a stash as the diff against the commit it was taken on", null), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = chooseStash(e)
+                override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { chooseStash(e, it) }
             })
             group.add(Separator.create("No Diff"))
             group.add(object : AnAction("Current Branch, Whole Tree", "Annotate any file on the checked-out branch. Clicking a file opens it in the editor.", null), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = setBranchScope(null)
+                override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { setBranchScope(null, it) }
             })
             group.add(object : AnAction("Current Branch, Folder…", "Same, limited to one folder of the project", null), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = chooseFolder()
+                override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { chooseFolder(it) }
             })
             val saved = store.savedSessions()
             if (saved.size > 1) {
@@ -856,17 +861,34 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             model.refresh()
         }
 
-        private fun chooseFolder() {
-            val base = project.guessProjectDir()
+        /** Single-repo project: [onDone] with null at once. Else a chooser of repo ids, so the scope names its repo. */
+        private fun pickRepo(e: AnActionEvent, onDone: (String?) -> Unit) {
+            val component = e.inputEvent?.component ?: this@ReviewToolWindowPanel
+            runInBackground({ ScopeChanges.repoIds(project) }) { ids ->
+                if (ids.size <= 1) {
+                    onDone(null)
+                    return@runInBackground
+                }
+                JBPopupFactory.getInstance().createPopupChooserBuilder(ids)
+                    .setTitle("Repository")
+                    .setNamerForFiltering { it }
+                    .setItemChosenCallback { onDone(it) }
+                    .createPopup()
+                    .showUnderneathOf(component)
+            }
+        }
+
+        private fun chooseFolder(repo: String?) {
+            val base = repo?.let { ScopeChanges.repository(project, it)?.root } ?: project.guessProjectDir()
             val descriptor = FileChooserDescriptor(false, true, false, false, false, false).withTitle("Folder to Annotate")
             if (base != null) descriptor.withRoots(base)
             val dir = FileChooser.chooseFile(descriptor, project, base) ?: return
-            setBranchScope(ReviewPaths.relative(project, dir.path).trimEnd('/') + "/")
+            setBranchScope(ReviewPaths.relative(project, dir.path).trimEnd('/') + "/", repo)
         }
 
-        private fun chooseStash(e: AnActionEvent) {
+        private fun chooseStash(e: AnActionEvent, repo: String?) {
             val component = e.inputEvent?.component ?: this@ReviewToolWindowPanel
-            runInBackground({ ScopeChanges.stashes(project) }) { stashes ->
+            runInBackground({ ScopeChanges.stashes(project, repo) }) { stashes ->
                 if (stashes.isEmpty()) {
                     Notifications.info(project, "No stashes", "git stash list is empty.")
                     return@runInBackground
@@ -875,15 +897,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     .setTitle("Review Stash")
                     .setRenderer(textListCellRenderer { "${it.first}  ${it.second}" })
                     .setNamerForFiltering { "${it.first} ${it.second}" }
-                    .setItemChosenCallback { setScope(ScopeChanges.stashScope(it.first)) }
+                    .setItemChosenCallback { setScope(ScopeChanges.stashScope(it.first).copy(repo = repo)) }
                     .createPopup()
                     .showUnderneathOf(component)
             }
         }
 
-        private fun chooseBranch(e: AnActionEvent) {
+        private fun chooseBranch(e: AnActionEvent, repo: String?) {
             val component = e.inputEvent?.component ?: this@ReviewToolWindowPanel
-            runInBackground({ ScopeChanges.branchNames(project) }) { names ->
+            runInBackground({ ScopeChanges.branchNames(project, repo) }) { names ->
                     if (names.isEmpty()) {
                         Notifications.warn(project, "No branches found", "Is this a git repository?")
                         return@runInBackground
@@ -891,20 +913,20 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     JBPopupFactory.getInstance().createPopupChooserBuilder(names)
                         .setTitle("Review Changes Since Branch")
                         .setNamerForFiltering { it }
-                        .setItemChosenCallback { setMergeBaseScope(it, "HEAD") }
+                        .setItemChosenCallback { setMergeBaseScope(it, "HEAD", repo) }
                         .createPopup()
                         .showUnderneathOf(component)
                 }
         }
 
         /** base = merge-base(ref, head), like a pull request diff. */
-        private fun setMergeBaseScope(ref: String, head: String) {
-            runInBackground({ ScopeChanges.mergeBase(project, ref) }) { mb ->
+        private fun setMergeBaseScope(ref: String, head: String, repo: String?) {
+            runInBackground({ ScopeChanges.mergeBase(project, repo, ref) }) { mb ->
                     if (mb == null) {
                         Notifications.warn(project, "Cannot resolve merge-base", "git merge-base $ref $head failed. Using $ref directly.")
-                        setScope(Scope(ScopeKind.RANGE, base = ref, head = head))
+                        setScope(Scope(ScopeKind.RANGE, base = ref, head = head, repo = repo))
                     } else {
-                        setScope(Scope(ScopeKind.RANGE, base = mb, head = head, baseLabel = "merge-base($ref)"))
+                        setScope(Scope(ScopeKind.RANGE, base = mb, head = head, baseLabel = "merge-base($ref)", repo = repo))
                     }
                 }
         }

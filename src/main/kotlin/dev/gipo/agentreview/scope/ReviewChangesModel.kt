@@ -362,9 +362,8 @@ class ReviewChangesModel(private val project: Project) : Disposable {
 
     fun findFile(path: String): VirtualFile? {
         if (path.startsWith("/")) return LocalFileSystem.getInstance().findFileByPath(path)
-        val base = project.basePath
         (find(path)?.change?.afterRevision?.file?.virtualFile)?.let { return it }
-        return LocalFileSystem.getInstance().findFileByPath("$base/$path")
+        return ScopeChanges.find(project, path)
     }
 
     /** Opens the diff when the file is in scope, else the file itself. */

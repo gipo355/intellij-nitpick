@@ -238,3 +238,21 @@ class PrevUnreviewedAction : AnAction(), DumbAware {
         model.openDiff(prev)
     }
 }
+
+/** Tree popup: opens the selected file in its editor. Hidden for deleted files. */
+class GoToSourceAction : AnAction(), DumbAware {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val change = e.getData(VcsDataKeys.CHANGES)?.singleOrNull()
+        e.presentation.isEnabledAndVisible = e.project != null && change?.afterRevision != null
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val change = e.getData(VcsDataKeys.CHANGES)?.singleOrNull() ?: return
+        if (!ReviewChangesModel.getInstance(project).openSource(ReviewPaths.relative(project, change))) {
+            Notifications.warn(project, "File not found", ReviewPaths.relative(project, change))
+        }
+    }
+}

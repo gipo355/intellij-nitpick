@@ -15,7 +15,7 @@ class PluginLoadTest : BasePlatformTestCase() {
         for (id in listOf(
             "AgentReview.AddComment", "AgentReview.AddFileComment", "AgentReview.ToggleReviewed",
             "AgentReview.NextUnreviewed", "AgentReview.CopyMarkdown", "AgentReview.SendToTerminal",
-            "AgentReview.WriteFile", "AgentReview.ReviewCommit", "AgentReview.ReviewUncommitted",
+            "AgentReview.WriteFile", "AgentReview.ReviewCommit", "AgentReview.ReviewUncommitted", "AgentReview.ReviewBranch", "AgentReview.GoToSource",
         )) {
             assertNotNull("action $id", am.getAction(id))
         }
