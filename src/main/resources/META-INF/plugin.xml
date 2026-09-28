@@ -134,6 +134,10 @@
                 text="Review Branch with Nitpick" description="Review what this branch adds over the current one, from their merge-base" icon="/icons/toolWindowNitpick.svg">
             <add-to-group group-id="Git.Branch" anchor="last"/>
         </action>
+        <action id="AgentReview.AddBranchToWorkspace" class="dev.gipo.agentreview.actions.AddBranchToWorkspaceAction"
+                text="Add Branch to Nitpick" description="Add the branch to the Nitpick workspace, from its merge-base with origin/HEAD">
+            <add-to-group group-id="Git.Branch" anchor="last"/>
+        </action>
         <action id="AgentReview.ReviewUncommitted" class="dev.gipo.agentreview.actions.ReviewUncommittedAction"
                 text="Review Uncommitted Changes with Nitpick" icon="/icons/toolWindowNitpick.svg">
             <add-to-group group-id="ChangesViewPopupMenu" anchor="last"/>

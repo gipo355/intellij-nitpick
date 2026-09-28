@@ -14,6 +14,7 @@ import dev.gipo.agentreview.model.RepoRange
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.scope.ReviewChangesModel
+import dev.gipo.agentreview.scope.RefInput
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ScopeChanges
 import dev.gipo.agentreview.store.ReviewStore
@@ -115,6 +116,39 @@ class AddToWorkspaceAction : AnAction(), DumbAware {
                     baseRef = if (single) "${newest.take(8)}^" else oldest.take(8), headRef = if (toWorkingTree) null else newest.take(8),
                 )
                 startReview(project, workspaceScope(project).withRange(range))
+            }, ModalityState.nonModal(), project.disposed)
+        }
+    }
+}
+
+/**
+ * Branch popups: the branch as the workspace range of each repo that has it, from its merge-base with `origin/HEAD`.
+ * The checked-out branch reaches the working tree.
+ */
+class AddBranchToWorkspaceAction : GitSingleBranchAction() {
+    override fun updateIfEnabledAndVisible(e: AnActionEvent, project: Project, repositories: List<GitRepository>, reference: GitBranch) {
+        e.presentation.text = "Add Branch '${reference.name}' to Nitpick"
+    }
+
+    override fun actionPerformed(e: AnActionEvent, project: Project, repositories: List<GitRepository>, reference: GitBranch) {
+        AppExecutorUtil.getAppExecutorService().execute {
+            val ranges = ArrayList<RepoRange>()
+            val problems = ArrayList<String>()
+            for (repo in repositories) {
+                val id = ScopeChanges.repoId(project, repo)
+                val default = ScopeChanges.defaultBranch(project, repo)
+                if (default == null) {
+                    problems += "$id: origin/HEAD is not set (git remote set-head origin -a)"
+                    continue
+                }
+                val head = if (repo.currentBranchName == reference.name) null else RefInput(reference.name)
+                ScopeChanges.pinRange(project, id, RefInput(default, mergeBase = true), head)
+                    .onSuccess { r -> if (r.head != null && r.head == r.base) problems += "$id: ${reference.name} has nothing over $default" else ranges += r }
+                    .onFailure { problems += "$id: ${it.message}" }
+            }
+            ApplicationManager.getApplication().invokeLater({
+                if (problems.isNotEmpty()) Notifications.warn(project, "Not added to Nitpick", problems.joinToString("<br>"))
+                if (ranges.isNotEmpty()) startReview(project, ranges.fold(workspaceScope(project)) { scope, r -> scope.withRange(r) })
             }, ModalityState.nonModal(), project.disposed)
         }
     }

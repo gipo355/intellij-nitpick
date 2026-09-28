@@ -98,7 +98,8 @@ diffs inline, mark files reviewed, hand the review to any agent.
 - `ScopeKind.WORKSPACE`: one `RepoRange` per repo in `Scope.ranges`, base and
   head pinned to hashes, head null = working tree (editable diff). The key is
   the constant `workspace`: ranges MUST stay out of it so edits keep the
-  session. Built from the log ("Add to Nitpick") and "Edit Workspace…".
+  session. Built from the log ("Add to Nitpick"), branch popups ("Add Branch",
+  base = merge-base with `origin/HEAD`) and "Edit Workspace…".
 - `ReviewedChange` is lazy: hash and content load on first use. Diff scopes
   prime everything in `refresh` (off EDT); the branch tree primes only files
   with a mark or comment. `state()` never reads a hash for an unmarked file.

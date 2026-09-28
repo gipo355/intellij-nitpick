@@ -93,6 +93,18 @@ object ScopeChanges {
     /** Parent of [hash]; null for a root commit. */
     fun parent(project: Project, repo: GitRepository, hash: String): String? = resolve(project, repo, "$hash^")
 
+    /** `origin/HEAD` as a branch, e.g. `origin/develop`. Null when the remote never set it. */
+    fun defaultBranch(project: Project, repo: GitRepository): String? {
+        val handler = GitLineHandler(project, repo.root, GitCommand.REV_PARSE)
+        handler.addParameters("--abbrev-ref", "origin/HEAD")
+        handler.setSilent(true)
+        return try {
+            Git.getInstance().runCommand(handler).getOutputOrThrow().trim().takeIf { it.isNotEmpty() && it != "origin/HEAD" }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** `git merge-base --is-ancestor`: false when [ancestor] is not on [head]'s history, or on failure. */
     fun isAncestor(project: Project, repo: GitRepository, ancestor: String, head: String): Boolean {
         val handler = GitLineHandler(project, repo.root, GitCommand.MERGE_BASE)
