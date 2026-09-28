@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.0](https://github.com/gipo355/intellij-nitpick/compare/v0.6.0...v0.7.0) (2026-09-28)
+
+
+### Features
+
+* add a branch to the workspace from branch popups ([0f801bc](https://github.com/gipo355/intellij-nitpick/commit/0f801bcaa7b9d697a8ca7e80813ebf4df968e8c7))
+* review one range per repo in a workspace scope ([7d505b6](https://github.com/gipo355/intellij-nitpick/commit/7d505b612555e2f907c7303420fa137ebed51462))
+* show reviewed state on toolbar buttons and slim the toolbar ([9da2b99](https://github.com/gipo355/intellij-nitpick/commit/9da2b99645d27bc489d5da62309ca3f1421c4218))
+* workspace scope, one range per repo ([b4c6ebe](https://github.com/gipo355/intellij-nitpick/commit/b4c6ebe3f1509f26c7285fb07d90ddeb66fbb457))
+
+
+### Bug Fixes
+
+* clear the file tree when a scope switch leaves it empty ([17e5a83](https://github.com/gipo355/intellij-nitpick/commit/17e5a837a4d77d93b35d6571f649c9d5e853e38b))
+
 ## [0.6.0](https://github.com/gipo355/intellij-nitpick/compare/v0.5.0...v0.6.0) (2026-09-13)
 
 
