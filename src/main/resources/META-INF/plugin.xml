@@ -52,7 +52,7 @@
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift C"/>
             </action>
             <action id="AgentReview.AddFileComment" class="dev.gipo.agentreview.actions.AddFileCommentAction"
-                    text="Add File Comment" description="Comment on the whole file" icon="AllIcons.FileTypes.Text">
+                    text="Add File Comment" description="Comment on the whole file" icon="/icons/fileComment.svg">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift F"/>
             </action>
             <action id="AgentReview.AddFolderComment" class="dev.gipo.agentreview.actions.AddFolderCommentAction"
@@ -64,11 +64,11 @@
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift R"/>
             </action>
             <action id="AgentReview.PrevUnreviewed" class="dev.gipo.agentreview.actions.PrevUnreviewedAction"
-                    text="Previous Unreviewed File" description="Open the diff of the previous unreviewed file" icon="AllIcons.Actions.PreviousOccurence">
+                    text="Previous Unreviewed File" description="Open the diff of the previous unreviewed file" icon="AllIcons.Actions.Back">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift P"/>
             </action>
             <action id="AgentReview.NextUnreviewed" class="dev.gipo.agentreview.actions.NextUnreviewedAction"
-                    text="Next Unreviewed File" description="Open the diff of the next unreviewed file" icon="AllIcons.Actions.NextOccurence">
+                    text="Next Unreviewed File" description="Open the diff of the next unreviewed file" icon="AllIcons.Actions.Forward">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift N"/>
             </action>
             <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>
