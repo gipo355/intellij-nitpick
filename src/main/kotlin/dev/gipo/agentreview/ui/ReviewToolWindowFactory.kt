@@ -5,6 +5,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -36,9 +37,8 @@ class ReviewToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun isSelected(e: AnActionEvent): Boolean = CombinedDiffRegistry.isEnabled()
             override fun setSelected(e: AnActionEvent, state: Boolean) = CombinedDiffRegistry.setCombinedDiffEnabled(state)
         }
-        val all = toggles + autoMark + continuous
-        toolWindow.setTitleActions(all)
-        toolWindow.setAdditionalGearActions(DefaultActionGroup(all))
+        // Set-and-forget settings: the gear menu only, not the title bar.
+        toolWindow.setAdditionalGearActions(DefaultActionGroup(toggles + autoMark + continuous + Separator.getInstance() + panel.sessionFileActions))
     }
 
     private class AutoMarkChoice(private val value: AutoMark) : ToggleAction(value.label), DumbAware {

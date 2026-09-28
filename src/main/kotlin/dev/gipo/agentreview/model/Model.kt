@@ -12,11 +12,30 @@ enum class ScopeKind(val label: String) {
     COMMIT("Single commit"),
     /** The checked-out tree with no diff: every file under [Scope.root] (or the project) at its current content. */
     BRANCH("Current branch"),
+    /** One contiguous range per repo, see [Scope.ranges]. */
+    WORKSPACE("Workspace"),
     ;
 
     /** Working-tree diffs follow the changelist manager; ranges, commits and the branch tree refresh on demand. */
-    val followsChangeList: Boolean get() = this == UNCOMMITTED || this == STAGED || this == UNSTAGED
+    val followsChangeList: Boolean get() = this == UNCOMMITTED || this == STAGED || this == UNSTAGED || this == WORKSPACE
 }
+
+/** One repo's part of a WORKSPACE scope. Refs are pinned hashes; the `*Ref` fields keep what the user picked. */
+@Serializable
+data class RepoRange(
+    /** `ReviewPaths.repoId`. */
+    val repo: String,
+    val base: String,
+    /** Null: the working tree. */
+    val head: String? = null,
+    val baseRef: String? = null,
+    val headRef: String? = null,
+) {
+    val label: String get() = (baseRef ?: shortRef(base)) + ".." + (headRef ?: head?.let(::shortRef) ?: "working tree")
+}
+
+/** Hashes to 8 chars, refs untouched. */
+private fun shortRef(ref: String): String = if (ref.length >= 8 && ref.all { it.isDigit() || it in 'a'..'f' }) ref.take(8) else ref
 
 @Serializable
 data class Scope(
@@ -34,12 +53,15 @@ data class Scope(
      * Null in single-repo projects, and always for working-tree scopes, which span every repo.
      */
     val repo: String? = null,
+    /** WORKSPACE only, one per repo, sorted by repo. */
+    val ranges: List<RepoRange> = emptyList(),
 ) {
     /** Session key. Working-tree scopes share one session per kind; ranges, commits and branches get their own. */
     fun key(): String = when (kind) {
         ScopeKind.RANGE -> "range:${base}..${head ?: "HEAD"}" + repoSuffix("|")
         ScopeKind.COMMIT -> "commit:$head" + repoSuffix("|")
         ScopeKind.BRANCH -> "branch:${head ?: "HEAD"}" + (root?.let { "@$it" } ?: "") + repoSuffix("|")
+        // Ranges stay out of the key: editing them keeps the session, its marks and comments.
         else -> kind.name.lowercase()
     }
 
@@ -56,10 +78,13 @@ data class Scope(
         }
         ScopeKind.COMMIT -> "commit ${short(head)}"
         ScopeKind.BRANCH -> root?.let { "$it on ${head ?: "HEAD"}" } ?: "Branch ${head ?: "HEAD"}"
+        ScopeKind.WORKSPACE -> "Workspace · ${ranges.size} repo" + (if (ranges.size == 1) "" else "s")
     } + (if (kind.followsChangeList) "" else repo?.let { " [$it]" } ?: "")
 
-    /** Hashes to 8 chars, refs untouched. */
-    private fun short(ref: String?): String = ref?.let { if (it.length >= 8 && it.all { c -> c.isDigit() || c in 'a'..'f' }) it.take(8) else it } ?: "?"
+    private fun short(ref: String?): String = ref?.let(::shortRef) ?: "?"
+
+    /** Adds [range], replacing the range of the same repo. */
+    fun withRange(range: RepoRange): Scope = copy(ranges = (ranges.filterNot { it.repo == range.repo } + range).sortedBy { it.repo })
 
     fun describe(): String = when (kind) {
         ScopeKind.UNCOMMITTED -> "uncommitted changes"
@@ -68,6 +93,7 @@ data class Scope(
         ScopeKind.RANGE -> "commits ${baseLabel ?: base?.take(8)}..${head?.take(8) ?: "HEAD"}"
         ScopeKind.COMMIT -> "commit ${head?.take(8)}"
         ScopeKind.BRANCH -> (root?.let { "$it on " } ?: "") + "branch ${head ?: "HEAD"} (whole tree, no diff)"
+        ScopeKind.WORKSPACE -> if (ranges.isEmpty()) "workspace (empty)" else "workspace: " + ranges.joinToString { "${it.repo} ${it.label}" }
     } + (if (kind.followsChangeList) "" else repo?.let { " in $it" } ?: "")
 }
 

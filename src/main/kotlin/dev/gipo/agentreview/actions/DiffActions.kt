@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.actionSystem.Toggleable
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
@@ -149,7 +150,7 @@ class AddFolderCommentAction : DiffReviewAction() {
     }
 }
 
-class ToggleReviewedAction : DiffReviewAction() {
+class ToggleReviewedAction : DiffReviewAction(), Toggleable {
     override fun update(e: AnActionEvent) {
         val project = e.project
         val paths = if (e.hiddenInEditor()) emptyList() else e.reviewPaths()
@@ -159,6 +160,8 @@ class ToggleReviewedAction : DiffReviewAction() {
         val allReviewed = paths.all { p -> model.find(p)?.let { model.state(it) } == ReviewState.REVIEWED }
         val suffix = if (paths.size > 1) " (${paths.size} files)" else ""
         e.presentation.text = (if (allReviewed) "Unmark Reviewed" else "Mark Reviewed") + suffix
+        // Toolbars show the state as a pressed button; menus keep the verb.
+        if (e.isFromActionToolbar) Toggleable.setSelected(e.presentation, allReviewed)
     }
 
     override fun actionPerformed(e: AnActionEvent) {

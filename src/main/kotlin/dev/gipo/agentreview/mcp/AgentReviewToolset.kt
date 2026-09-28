@@ -43,7 +43,9 @@ class AgentReviewToolset : McpToolset {
         JSON carries the scope: scope_kind is one of uncommitted, staged, unstaged (working tree, base/head null),
         range (git diff base..head; base may be a merge-base hash), commit (single commit in head), or branch:
         no diff, the human annotated the checked-out tree (head = branch name, root = folder or null, base = HEAD
-        when the plan started). Treat branch comments as a plan for a change, not as a review of one.""",
+        when the plan started). Treat branch comments as a plan for a change, not as a review of one.
+        workspace: one diff per repo in `ranges` [{repo, base, head, label}]; head null = working tree, so the diff
+        is `git diff base` (else `git diff base head`) inside that repo. In multi-repo projects paths are prefixed with the repo.""",
     )
     suspend fun agent_review_get_review(
         @McpDescription("\"markdown\" or \"json\"") format: String = "markdown",

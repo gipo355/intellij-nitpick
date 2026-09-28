@@ -70,6 +70,7 @@ import dev.gipo.agentreview.diff.vimReadyTextField
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.actions.ToggleReviewedAction
+import dev.gipo.agentreview.actions.workspaceScope
 import dev.gipo.agentreview.model.Author
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ReviewSession
@@ -125,14 +126,15 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private val status = JBLabel()
     private val notes = vimReadyTextField(project, "").apply { setPlaceholder("Review-level notes for the agent…") }
     private var suppressNotes = false
-    private var shown: List<String> = emptyList()
+    /** Paths in the tree. Null: unknown, the next [showChanges] always rebuilds, even to an empty tree. */
+    private var shown: List<String>? = null
 
     /** Notes are written to the store after a pause, not per keystroke: every editor binding listens to the store. */
     private val notesAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private var notesDirty = false
     private var notesKey: String = ""
 
-    private val newSessionAction = object : AnAction("New Session", "Start a fresh review of this scope. The current one is kept under Saved Sessions", AllIcons.General.Add), DumbAware {
+    private val newSessionAction = object : AnAction("New Session of This Scope", "Start a fresh review of this scope. The current one is kept under Saved Sessions", null), DumbAware {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
         override fun update(e: AnActionEvent) {
             e.presentation.isEnabled = store.hasContent()
@@ -316,7 +318,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         bus.subscribe(ChangesListener.TOPIC, object : ChangesListener {
             override fun changesUpdated(changes: List<ReviewedChange>) {
-                shown = emptyList()
+                shown = null
                 refreshUi()
             }
         })
@@ -412,7 +414,6 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private fun createToolbar(): JComponent {
         val group = DefaultActionGroup().apply {
             add(ScopeCombo())
-            add(newSessionAction)
             add(object : ToggleAction("Editor Annotations", "Show comment cards, the gutter + and the review buttons in diffs and editors. Off keeps the scope.", AllIcons.Actions.Show), DumbAware {
                 override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
                 override fun isSelected(e: AnActionEvent): Boolean = EditorReviewBinding.annotationsEnabled
@@ -423,7 +424,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             })
             add(ActionManager.getInstance().getAction("AgentReview.PrevUnreviewed"))
             add(ActionManager.getInstance().getAction("AgentReview.NextUnreviewed"))
-            add(object : AnAction("Toggle Reviewed", "Space also toggles the selection. A folder marks all files under it, or unmarks them when all are reviewed", AllIcons.Actions.Checked), DumbAware {
+            add(object : AnAction("Toggle Reviewed", "Space also toggles the selection. A folder marks all files under it, or unmarks them when all are reviewed", AllIcons.Actions.Checked), Toggleable, DumbAware {
+                // Reads the tree selection.
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+                override fun update(e: AnActionEvent) {
+                    val selected = browser.selectedChanges.mapNotNull { model.find(ReviewPaths.relative(project, it)) }
+                    Toggleable.setSelected(e.presentation, selected.isNotEmpty() && selected.all { model.state(it) == ReviewState.REVIEWED })
+                }
                 override fun actionPerformed(e: AnActionEvent) = toggleSelectedReviewed()
             })
             add(ActionManager.getInstance().getAction("AgentReview.AddFileComment"))
@@ -435,44 +442,54 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
             add(ActionManager.getInstance().getAction("AgentReview.WriteFile"))
             add(ActionManager.getInstance().getAction("AgentReview.SendGroup"))
             add(Separator.getInstance())
-            add(object : AnAction("Export Session…", "Save this session's marks, notes and comments to a JSON file", AllIcons.ToolbarDecorator.Export), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = exportSession()
-            })
-            add(object : AnAction("Import Session…", "Load a session exported by Nitpick", AllIcons.ToolbarDecorator.Import), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = importSession()
-            })
-            add(Separator.getInstance())
-            add(object : AnAction("Reset Reviewed Marks", "Unmark every file, keep comments", AllIcons.Actions.Rollback), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = store.update { it.copy(reviewed = emptyMap()) }
-            })
-            add(object : AnAction("Clear Resolved Comments", "Delete comments the agent already resolved", AllIcons.Actions.Cancel), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) = store.removeComments(model.comments().filter { it.resolved }.map { it.id })
-            })
-            add(object : AnAction("Clear Session", "Delete this scope's comments and reviewed marks", AllIcons.Actions.GC), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) {
-                    val ok = Messages.showYesNoDialog(project, "Delete all comments and reviewed marks of ${store.session.scope.describe()}${store.session.generationLabel}?", "Clear Review Session", null)
-                    if (ok == Messages.YES) store.clear()
-                }
-            })
-            add(object : AnAction("Clear All Sessions", "Delete comments and marks of every scope in this project", AllIcons.Actions.DeleteTag), DumbAware {
-                override fun actionPerformed(e: AnActionEvent) {
-                    val ok = Messages.showYesNoDialog(project, "Delete every saved review session of this project?", "Clear All Sessions", null)
-                    if (ok == Messages.YES) store.clearAll()
-                }
-            })
-            add(object : AnAction("Forget Other Sessions", "Drop saved sessions of other scopes", AllIcons.Actions.ClearCash), DumbAware {
-                override fun update(e: AnActionEvent) {
-                    e.presentation.isEnabled = store.sessionCount > 1
-                }
-                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-                override fun actionPerformed(e: AnActionEvent) = store.forgetOtherSessions()
-            })
+            add(cleanUpGroup())
         }
         val toolbar = ActionManager.getInstance().createActionToolbar("AgentReviewToolbar", group, true)
         toolbar.targetComponent = browser.viewer
         toolbar.layoutStrategy = ToolbarLayoutStrategy.WRAP_STRATEGY
         return toolbar.component
     }
+
+    /** Destructive actions behind one button, so a stray click cannot wipe a session. */
+    private fun cleanUpGroup() = DefaultActionGroup("Clean Up", true).apply {
+        templatePresentation.icon = AllIcons.Actions.GC
+        add(object : AnAction("Reset Reviewed Marks", "Unmark every file, keep comments", AllIcons.Actions.Rollback), DumbAware {
+            override fun actionPerformed(e: AnActionEvent) = store.update { it.copy(reviewed = emptyMap()) }
+        })
+        add(object : AnAction("Clear Resolved Comments", "Delete comments the agent already resolved", null), DumbAware {
+            override fun actionPerformed(e: AnActionEvent) = store.removeComments(model.comments().filter { it.resolved }.map { it.id })
+        })
+        add(Separator.getInstance())
+        add(object : AnAction("Clear This Session…", "Delete this scope's comments and reviewed marks", null), DumbAware {
+            override fun actionPerformed(e: AnActionEvent) {
+                val ok = Messages.showYesNoDialog(project, "Delete all comments and reviewed marks of ${store.session.scope.describe()}${store.session.generationLabel}?", "Clear Review Session", null)
+                if (ok == Messages.YES) store.clear()
+            }
+        })
+        add(object : AnAction("Forget Other Sessions", "Drop saved sessions of other scopes", null), DumbAware {
+            override fun update(e: AnActionEvent) {
+                e.presentation.isEnabled = store.sessionCount > 1
+            }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+            override fun actionPerformed(e: AnActionEvent) = store.forgetOtherSessions()
+        })
+        add(object : AnAction("Clear All Sessions…", "Delete comments and marks of every scope in this project", null), DumbAware {
+            override fun actionPerformed(e: AnActionEvent) {
+                val ok = Messages.showYesNoDialog(project, "Delete every saved review session of this project?", "Clear All Sessions", null)
+                if (ok == Messages.YES) store.clearAll()
+            }
+        })
+    }
+
+    /** Rare actions for the tool window's gear menu. */
+    val sessionFileActions: List<AnAction> = listOf(
+        object : AnAction("Export Session…", "Save this session's marks, notes and comments to a JSON file", AllIcons.ToolbarDecorator.Export), DumbAware {
+            override fun actionPerformed(e: AnActionEvent) = exportSession()
+        },
+        object : AnAction("Import Session…", "Load a session exported by Nitpick", AllIcons.ToolbarDecorator.Import), DumbAware {
+            override fun actionPerformed(e: AnActionEvent) = importSession()
+        },
+    )
 
     private fun commentsPopup(): DefaultActionGroup {
         fun selected(): Comment? = commentsList.selectedValue
@@ -777,11 +794,23 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
 
         override fun createPopupActionGroup(button: JComponent, context: com.intellij.openapi.actionSystem.DataContext): DefaultActionGroup {
             val group = DefaultActionGroup()
+            group.add(newSessionAction)
+            group.add(Separator.getInstance())
             for (kind in listOf(ScopeKind.UNCOMMITTED, ScopeKind.STAGED, ScopeKind.UNSTAGED)) {
                 group.add(object : AnAction(kind.label), DumbAware {
                     override fun actionPerformed(e: AnActionEvent) = setScope(Scope(kind))
                 })
             }
+            group.add(Separator.create("Workspace"))
+            val workspace = workspaceScope(project)
+            if (workspace.ranges.isNotEmpty()) {
+                group.add(object : AnAction(workspace.shortLabel(), "Reviewing ${workspace.describe()}", null), DumbAware {
+                    override fun actionPerformed(e: AnActionEvent) = setScope(workspaceScope(project))
+                })
+            }
+            group.add(object : AnAction("Edit Workspace…", "Pick a range per repository: HEAD~3, main..., or skip", null), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = editWorkspace()
+            })
             group.add(Separator.getInstance())
             group.add(object : AnAction("Compare with Branch…", "Review everything on HEAD since it diverged from a branch (merge-base)", null), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { chooseBranch(e, it) }
@@ -875,6 +904,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     .setItemChosenCallback { onDone(it) }
                     .createPopup()
                     .showUnderneathOf(component)
+            }
+        }
+
+        private fun editWorkspace() {
+            runInBackground({ ScopeChanges.repoIds(project) }) { ids ->
+                val dialog = EditWorkspaceDialog(project, workspaceScope(project), ids)
+                if (dialog.showAndGet()) dialog.result?.let { setScope(it) }
             }
         }
 
