@@ -126,7 +126,8 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
     private val status = JBLabel()
     private val notes = vimReadyTextField(project, "").apply { setPlaceholder("Review-level notes for the agent…") }
     private var suppressNotes = false
-    private var shown: List<String> = emptyList()
+    /** Paths in the tree. Null: unknown, the next [showChanges] always rebuilds, even to an empty tree. */
+    private var shown: List<String>? = null
 
     /** Notes are written to the store after a pause, not per keystroke: every editor binding listens to the store. */
     private val notesAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
@@ -317,7 +318,7 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
         })
         bus.subscribe(ChangesListener.TOPIC, object : ChangesListener {
             override fun changesUpdated(changes: List<ReviewedChange>) {
-                shown = emptyList()
+                shown = null
                 refreshUi()
             }
         })
