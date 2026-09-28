@@ -52,6 +52,16 @@ object JsonExporter {
         put("base", session.scope.base?.let { JsonPrimitive(it) } ?: JsonNull)
         put("head", session.scope.head?.let { JsonPrimitive(it) } ?: JsonNull)
         put("root", session.scope.root?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("ranges", buildJsonArray {
+            session.scope.ranges.forEach { r ->
+                add(buildJsonObject {
+                    put("repo", r.repo)
+                    put("base", r.base)
+                    put("head", r.head?.let { JsonPrimitive(it) } ?: JsonNull)
+                    put("label", r.label)
+                })
+            }
+        })
         put("branch", branch?.let { JsonPrimitive(it) } ?: JsonNull)
         put("notes", session.notes)
         put("reviewed_files", buildJsonArray { session.reviewed.keys.sorted().forEach { add(JsonPrimitive(it)) } })

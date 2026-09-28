@@ -125,6 +125,11 @@
                 text="Review Commit with Nitpick" icon="/icons/toolWindowNitpick.svg">
             <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
         </action>
+        <action id="AgentReview.AddToWorkspace" class="dev.gipo.agentreview.actions.AddToWorkspaceAction"
+                text="Add to Nitpick" description="Add the selected commits of this repo to the Nitpick workspace"
+                icon="/icons/toolWindowNitpick.svg">
+            <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
+        </action>
         <action id="AgentReview.ReviewBranch" class="dev.gipo.agentreview.actions.ReviewBranchAction"
                 text="Review Branch with Nitpick" description="Review what this branch adds over the current one, from their merge-base" icon="/icons/toolWindowNitpick.svg">
             <add-to-group group-id="Git.Branch" anchor="last"/>

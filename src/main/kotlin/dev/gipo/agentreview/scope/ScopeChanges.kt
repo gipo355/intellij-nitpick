@@ -14,8 +14,10 @@ import com.intellij.openapi.roots.ContentIterator
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
+import dev.gipo.agentreview.model.RepoRange
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
+import dev.gipo.agentreview.ui.Notifications
 import git4idea.GitContentRevision
 import git4idea.GitRevisionNumber
 import git4idea.changes.GitChangeUtils
@@ -25,10 +27,13 @@ import git4idea.commands.GitLineHandler
 import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
+import java.util.concurrent.ConcurrentHashMap
 
 /** Resolves a [Scope] to the list of changes to review. Runs git, call off the EDT. */
 object ScopeChanges {
     private const val INDEX_REV = ":0"
+
+    private val warnedRanges: MutableSet<RepoRange> = ConcurrentHashMap.newKeySet()
 
     fun collect(project: Project, scope: Scope): List<Change> {
         val all = GitRepositoryManager.getInstance(project).repositories
@@ -51,7 +56,84 @@ object ScopeChanges {
                 repos.flatMap { repo -> GitChangeUtils.getDiff(repo, "$hash~1", hash, true).orEmpty() }
             }
             ScopeKind.BRANCH -> branchTree(project, scope.root ?: scope.repo)
+            ScopeKind.WORKSPACE -> scope.ranges.flatMap { workspaceRange(project, it) }
         }.sortedBy { ChangesUtil.getFilePath(it).path }
+    }
+
+    /** A range git cannot diff (repo gone, ref gc'd) yields nothing and one warning, not a silently empty repo. */
+    private fun workspaceRange(project: Project, range: RepoRange): List<Change> {
+        val repo = repository(project, range.repo)
+        // Right after startup no repo is registered yet: nothing is missing.
+        if (repo == null && GitRepositoryManager.getInstance(project).repositories.isEmpty()) return emptyList()
+        val diff = repo?.let {
+            if (range.head != null) GitChangeUtils.getDiff(it, range.base, range.head, true)
+            else GitChangeUtils.getDiffWithWorkingTree(it, range.base, true)
+        }
+        if (repo == null || diff == null) {
+            // Refresh runs on every save: warn once per range.
+            val why = if (repo == null) "repository not found" else "git cannot diff ${range.label}"
+            if (warnedRanges.add(range)) Notifications.warn(project, "Workspace range skipped", "${range.repo}: $why")
+            return emptyList()
+        }
+        if (range.head != null) return diff.toList()
+        val vcs = ProjectLevelVcsManager.getInstance(project)
+        val untracked = ChangeListManager.getInstance(project).unversionedFilesPaths
+            .filter { !it.isDirectory && vcs.getVcsRootFor(it) == repo.root }
+            .map { Change(null, CurrentContentRevision(it)) }
+        return diff + untracked
+    }
+
+    /** Full hash of [ref] in [repo], or null when git cannot resolve it. */
+    fun resolve(project: Project, repo: GitRepository, ref: String): String? = try {
+        GitChangeUtils.resolveReference(project, repo.root, ref).rev
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Parent of [hash]; null for a root commit. */
+    fun parent(project: Project, repo: GitRepository, hash: String): String? = resolve(project, repo, "$hash^")
+
+    /** `git merge-base --is-ancestor`: false when [ancestor] is not on [head]'s history, or on failure. */
+    fun isAncestor(project: Project, repo: GitRepository, ancestor: String, head: String): Boolean {
+        val handler = GitLineHandler(project, repo.root, GitCommand.MERGE_BASE)
+        handler.addParameters("--is-ancestor", ancestor, head)
+        handler.setSilent(true)
+        return try {
+            Git.getInstance().runCommand(handler).success()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** `git rev-list --count base..head`, or null on failure. */
+    fun commitCount(project: Project, repo: GitRepository, base: String, head: String): Int? {
+        val handler = GitLineHandler(project, repo.root, GitCommand.REV_LIST)
+        handler.addParameters("--count", "$base..$head")
+        handler.setSilent(true)
+        return try {
+            Git.getInstance().runCommand(handler).getOutputOrThrow().trim().toIntOrNull()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Pins [base] (and [head], null = working tree) of repo [repoId] to hashes.
+     * Returns the range, or an error message for the user.
+     */
+    fun pinRange(project: Project, repoId: String, base: RefInput, head: RefInput?): Result<RepoRange> {
+        val repo = repository(project, repoId) ?: return Result.failure(IllegalArgumentException("repository not found"))
+        val headHash = head?.let { resolve(project, repo, it.ref) ?: return Result.failure(IllegalArgumentException("cannot resolve ${it.ref}")) }
+        val baseHash = if (base.mergeBase) {
+            try {
+                GitHistoryUtils.getMergeBase(project, repo.root, base.ref, headHash ?: "HEAD")?.rev
+            } catch (e: Exception) {
+                null
+            } ?: return Result.failure(IllegalArgumentException("no merge-base with ${base.ref}"))
+        } else {
+            resolve(project, repo, base.ref) ?: return Result.failure(IllegalArgumentException("cannot resolve ${base.ref}"))
+        }
+        return Result.success(RepoRange(repoId, baseHash, headHash, base.text, head?.text))
     }
 
     /** [id] null: the first repository, as in a single-repo project. Else the one with that [ReviewPaths.repoId], or null. */
@@ -174,6 +256,20 @@ object ScopeChanges {
         rev?.content
     } catch (e: Exception) {
         null
+    }
+}
+
+/** A ref typed by the user. `main...` means the merge-base of `main` and the head. */
+data class RefInput(val ref: String, val mergeBase: Boolean = false) {
+    val text: String get() = if (mergeBase) "$ref..." else ref
+
+    companion object {
+        /** Blank: no ref. */
+        fun parse(input: String): RefInput? {
+            val t = input.trim()
+            if (t.isEmpty()) return null
+            return if (t.endsWith("...")) RefInput(t.removeSuffix("..."), mergeBase = true) else RefInput(t)
+        }
     }
 }
 

@@ -70,6 +70,7 @@ import dev.gipo.agentreview.diff.vimReadyTextField
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.gipo.agentreview.actions.ToggleReviewedAction
+import dev.gipo.agentreview.actions.workspaceScope
 import dev.gipo.agentreview.model.Author
 import dev.gipo.agentreview.model.Comment
 import dev.gipo.agentreview.model.ReviewSession
@@ -782,6 +783,16 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     override fun actionPerformed(e: AnActionEvent) = setScope(Scope(kind))
                 })
             }
+            group.add(Separator.create("Workspace"))
+            val workspace = workspaceScope(project)
+            if (workspace.ranges.isNotEmpty()) {
+                group.add(object : AnAction(workspace.shortLabel(), "Reviewing ${workspace.describe()}", null), DumbAware {
+                    override fun actionPerformed(e: AnActionEvent) = setScope(workspaceScope(project))
+                })
+            }
+            group.add(object : AnAction("Edit Workspace…", "Pick a range per repository: HEAD~3, main..., or skip", null), DumbAware {
+                override fun actionPerformed(e: AnActionEvent) = editWorkspace()
+            })
             group.add(Separator.getInstance())
             group.add(object : AnAction("Compare with Branch…", "Review everything on HEAD since it diverged from a branch (merge-base)", null), DumbAware {
                 override fun actionPerformed(e: AnActionEvent) = pickRepo(e) { chooseBranch(e, it) }
@@ -875,6 +886,13 @@ class ReviewToolWindowPanel(private val project: Project, parent: Disposable) : 
                     .setItemChosenCallback { onDone(it) }
                     .createPopup()
                     .showUnderneathOf(component)
+            }
+        }
+
+        private fun editWorkspace() {
+            runInBackground({ ScopeChanges.repoIds(project) }) { ids ->
+                val dialog = EditWorkspaceDialog(project, workspaceScope(project), ids)
+                if (dialog.showAndGet()) dialog.result?.let { setScope(it) }
             }
         }
 

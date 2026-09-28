@@ -10,16 +10,19 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.vcs.log.VcsLogDataKeys
+import dev.gipo.agentreview.model.RepoRange
 import dev.gipo.agentreview.model.Scope
 import dev.gipo.agentreview.model.ScopeKind
 import dev.gipo.agentreview.scope.ReviewChangesModel
 import dev.gipo.agentreview.scope.ReviewPaths
 import dev.gipo.agentreview.scope.ScopeChanges
 import dev.gipo.agentreview.store.ReviewStore
+import dev.gipo.agentreview.ui.Notifications
 import git4idea.GitBranch
 import git4idea.actions.branch.GitSingleBranchAction
 import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryManager
 
 internal fun startReview(project: Project, scope: Scope) {
     dev.gipo.agentreview.diff.BranchEditorBinder.getInstance(project)
@@ -58,6 +61,68 @@ class ReviewCommitAction : AnAction(), DumbAware {
         startReview(project, scope)
     }
 }
+
+/**
+ * Log selection of one repo as its workspace range, like the log's "Compare Versions": one commit is its own change,
+ * two or more are oldest..newest with the oldest as base, not included. Everything git has in between counts, shown in
+ * the log or not. When the newest is HEAD the range reaches the working tree.
+ */
+class AddToWorkspaceAction : AnAction(), DumbAware {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val project = e.project
+        val commits = e.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)?.commits.orEmpty()
+        val root = commits.firstOrNull()?.root
+        if (project == null || root == null || commits.any { it.root != root }) {
+            e.presentation.isEnabledAndVisible = false
+            return
+        }
+        val head = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)?.currentRevision
+        e.presentation.isEnabledAndVisible = true
+        e.presentation.text = if (head == commits.first().hash.asString()) "Add to Nitpick, with Uncommitted Changes" else "Add to Nitpick"
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val commits = e.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)?.commits?.takeIf { it.isNotEmpty() } ?: return
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(commits.first().root) ?: return
+        // Log rows are newest first.
+        val newest = commits.first().hash.asString()
+        val oldest = commits.last().hash.asString()
+        val single = commits.size == 1
+        val toWorkingTree = repo.currentRevision == newest
+        AppExecutorUtil.getAppExecutorService().execute {
+            val base = if (single) ScopeChanges.parent(project, repo, newest) else oldest
+            val onHistory = single || ScopeChanges.isAncestor(project, repo, oldest, newest)
+            val count = base?.let { ScopeChanges.commitCount(project, repo, it, newest) }
+            val selected = if (single) 1 else commits.size - 1
+            ApplicationManager.getApplication().invokeLater({
+                if (base == null) {
+                    Notifications.warn(project, "Not added to Nitpick", "${newest.take(8)} is a root commit.")
+                    return@invokeLater
+                }
+                if (!onHistory) {
+                    Notifications.warn(project, "Not added to Nitpick", "${oldest.take(8)} is not in the history of ${newest.take(8)}. Select commits of one branch.")
+                    return@invokeLater
+                }
+                // A filtered log hides commits that the range still holds.
+                if (count != null && count > selected) {
+                    Notifications.info(project, "Added $count commits to Nitpick", "${base.take(8)}..${newest.take(8)} holds $count commits, $selected selected above the base. The others are hidden by log filters or come in through merges.")
+                }
+                val range = RepoRange(
+                    ScopeChanges.repoId(project, repo), base, if (toWorkingTree) null else newest,
+                    baseRef = if (single) "${newest.take(8)}^" else oldest.take(8), headRef = if (toWorkingTree) null else newest.take(8),
+                )
+                startReview(project, workspaceScope(project).withRange(range))
+            }, ModalityState.nonModal(), project.disposed)
+        }
+    }
+}
+
+/** The live workspace scope, or an empty one. */
+internal fun workspaceScope(project: Project): Scope =
+    ReviewStore.getInstance(project).liveSession(Scope(ScopeKind.WORKSPACE).key())?.scope ?: Scope(ScopeKind.WORKSPACE)
 
 class ReviewUncommittedAction : AnAction(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
